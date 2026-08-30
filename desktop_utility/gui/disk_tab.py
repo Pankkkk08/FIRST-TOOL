@@ -6,10 +6,10 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from desktop_utility.core.common import human_size
+from shared.format import human_size
 from desktop_utility.core.diskscan import Node, scan_directory, squarified_treemap
-from desktop_utility.workers import CancellableTask
-from desktop_utility.gui import theme
+from shared.workers import CancellableTask
+from shared import theme
 
 
 class DiskUsageTab(ttk.Frame):

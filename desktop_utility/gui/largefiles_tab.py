@@ -7,10 +7,10 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from desktop_utility.core.common import human_size
+from shared.format import human_size
 from desktop_utility.core.largefiles import FileInfo, find_largest_files, find_oldest_files
-from desktop_utility.core.safedelete import quarantine_paths
-from desktop_utility.workers import CancellableTask
+from shared.safedelete import quarantine_paths
+from shared.workers import CancellableTask
 
 
 class LargeFilesTab(ttk.Frame):

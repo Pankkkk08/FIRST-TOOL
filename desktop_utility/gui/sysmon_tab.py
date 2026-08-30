@@ -5,7 +5,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from desktop_utility.core.common import human_size
+from shared.format import human_size
 from desktop_utility.core.sysmon import get_snapshot
 
 REFRESH_MS = 1500

@@ -1,6 +1,6 @@
 import os
 
-from desktop_utility.core.safedelete import quarantine_paths, restore_batch, empty_quarantine
+from shared.safedelete import quarantine_paths, restore_batch, empty_quarantine
 
 
 def _write(path, content=b"data"):

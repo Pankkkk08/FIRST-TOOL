@@ -1,8 +1,6 @@
-"""Shared helpers used across the core scanning modules."""
+"""Formatting helpers shared across every local tool in this repo."""
 
 from __future__ import annotations
-
-import os
 
 _UNITS = ("B", "KB", "MB", "GB", "TB", "PB")
 
@@ -19,17 +17,3 @@ def human_size(num_bytes: float) -> str:
             return f"{size:.1f} {unit}"
         size /= 1024.0
     return f"{size:.1f} PB"  # pragma: no cover - unreachable, defensive only
-
-
-def iter_dir_entries(path):
-    """Yield os.DirEntry objects for a directory, skipping unreadable ones.
-
-    Never raises for permission errors or races (a file disappearing between
-    listing and stat) — those are simply skipped, since this tool is a
-    best-effort local scanner, not a source of truth about the filesystem.
-    """
-    try:
-        with os.scandir(path) as it:
-            yield from it
-    except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
-        return

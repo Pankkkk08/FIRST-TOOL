@@ -6,10 +6,10 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from desktop_utility.core.common import human_size
+from shared.format import human_size
 from desktop_utility.core.duplicates import DuplicateGroup, find_duplicates
-from desktop_utility.core.safedelete import quarantine_paths
-from desktop_utility.workers import CancellableTask
+from shared.safedelete import quarantine_paths
+from shared.workers import CancellableTask
 
 
 class DuplicatesTab(ttk.Frame):

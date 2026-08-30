@@ -3,7 +3,6 @@ import os
 import pytest
 
 from desktop_utility.core.diskscan import scan_directory, squarified_treemap
-from desktop_utility.core.common import human_size
 
 
 def _write(path, size):
@@ -66,13 +65,6 @@ def test_empty_directory_scan(tmp_path):
     root = scan_directory(str(tmp_path))
     assert root.size == 0
     assert root.children == []
-
-
-def test_human_size_formatting():
-    assert human_size(0) == "0 B"
-    assert human_size(512) == "512 B"
-    assert human_size(1536) == "1.5 KB"
-    assert human_size(1024 * 1024 * 3) == "3.0 MB"
 
 
 def test_squarified_treemap_covers_area_and_no_overlap_slack(tmp_path):
