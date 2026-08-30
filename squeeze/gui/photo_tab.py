@@ -87,9 +87,14 @@ class PhotoTab(ttk.Frame):
         row3.pack(fill="x", padx=6, pady=3)
         ttk.Label(row3, text="Output folder:").pack(side="left")
         self.output_dir_var = tk.StringVar(value="")
-        ttk.Entry(row3, textvariable=self.output_dir_var, width=50).pack(side="left", padx=4, fill="x", expand=True)
+        ttk.Entry(row3, textvariable=self.output_dir_var).pack(side="left", padx=4, fill="x", expand=True)
         ttk.Button(row3, text="Browse…", command=self._browse_output_dir).pack(side="left")
-        ttk.Label(row3, text="(blank = same folder as each source file)").pack(side="left", padx=6)
+
+        row3b = ttk.Frame(options)
+        row3b.pack(fill="x", padx=6)
+        ttk.Label(row3b, text="(blank = same folder as each source file)", foreground="#666666").pack(
+            anchor="w"
+        )
 
         bottom = ttk.Frame(self)
         bottom.pack(fill="x", padx=8, pady=6)

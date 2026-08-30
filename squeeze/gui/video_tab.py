@@ -100,6 +100,8 @@ class VideoTab(ttk.Frame):
         )
         self.preset_combo.pack(side="left", padx=4)
 
+        # Split across two rows (rather than one long one) so nothing gets
+        # clipped off the right edge at the window's minimum width.
         row2 = ttk.Frame(options)
         row2.pack(fill="x", padx=6, pady=3)
         ttk.Label(row2, text="Quality (CRF, lower = better):").pack(side="left")
@@ -112,15 +114,17 @@ class VideoTab(ttk.Frame):
             row2, textvariable=self.resolution_var, values=list(RESOLUTIONS.keys()), state="readonly", width=14
         ).pack(side="left", padx=4)
 
-        ttk.Label(row2, text="  Audio:").pack(side="left", padx=(16, 0))
+        row2b = ttk.Frame(options)
+        row2b.pack(fill="x", padx=6, pady=3)
+        ttk.Label(row2b, text="Audio:").pack(side="left")
         self.audio_var = tk.StringVar(value="Copy (no re-encode)")
         ttk.Combobox(
-            row2, textvariable=self.audio_var, values=list(AUDIO_MODES.keys()), state="readonly", width=20
+            row2b, textvariable=self.audio_var, values=list(AUDIO_MODES.keys()), state="readonly", width=20
         ).pack(side="left", padx=4)
 
-        ttk.Label(row2, text="  Container:").pack(side="left", padx=(16, 0))
+        ttk.Label(row2b, text="  Container:").pack(side="left", padx=(16, 0))
         self.container_var = tk.StringVar(value="mp4")
-        ttk.Combobox(row2, textvariable=self.container_var, values=CONTAINERS, state="readonly", width=6).pack(
+        ttk.Combobox(row2b, textvariable=self.container_var, values=CONTAINERS, state="readonly", width=6).pack(
             side="left", padx=4
         )
 
@@ -128,9 +132,14 @@ class VideoTab(ttk.Frame):
         row3.pack(fill="x", padx=6, pady=3)
         ttk.Label(row3, text="Output folder:").pack(side="left")
         self.output_dir_var = tk.StringVar(value="")
-        ttk.Entry(row3, textvariable=self.output_dir_var, width=50).pack(side="left", padx=4, fill="x", expand=True)
+        ttk.Entry(row3, textvariable=self.output_dir_var).pack(side="left", padx=4, fill="x", expand=True)
         ttk.Button(row3, text="Browse…", command=self._browse_output_dir).pack(side="left")
-        ttk.Label(row3, text="(blank = same folder as each source file)").pack(side="left", padx=6)
+
+        row3b = ttk.Frame(options)
+        row3b.pack(fill="x", padx=6)
+        ttk.Label(row3b, text="(blank = same folder as each source file)", foreground="#666666").pack(
+            anchor="w"
+        )
 
         bottom = ttk.Frame(self)
         bottom.pack(fill="x", padx=8, pady=6)

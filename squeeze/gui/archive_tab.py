@@ -70,9 +70,14 @@ class ArchiveTab(ttk.Frame):
         row.pack(fill="x", padx=8, pady=3)
         ttk.Label(row, text="Output folder:").pack(side="left")
         self.output_dir_var = tk.StringVar(value="")
-        ttk.Entry(row, textvariable=self.output_dir_var, width=50).pack(side="left", padx=4, fill="x", expand=True)
+        ttk.Entry(row, textvariable=self.output_dir_var).pack(side="left", padx=4, fill="x", expand=True)
         ttk.Button(row, text="Browse…", command=self._browse_output_dir).pack(side="left")
-        ttk.Label(row, text="(blank = same folder as source, gzip mode only)").pack(side="left", padx=6)
+
+        row_hint = ttk.Frame(self)
+        row_hint.pack(fill="x", padx=8)
+        ttk.Label(
+            row_hint, text="(blank = same folder as source, gzip mode only)", foreground="#666666"
+        ).pack(anchor="w")
 
         bottom = ttk.Frame(self)
         bottom.pack(fill="x", padx=8, pady=6)
