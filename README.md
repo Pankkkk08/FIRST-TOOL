@@ -5,30 +5,64 @@ network calls, no telemetry. Two tools live here so far:
 
 | Tool | What it does | Run it |
 |---|---|---|
-| **[Dissect](#dissect)** | See what's using your disk & system resources | `python run.py` |
-| **[Squeeze](#squeeze)** | Compress video, photos, and files/folders | `python run_compressor.py` |
+| **[Sweep](#sweep)** | See what's using your disk & system resources | `python run_sweep.py` |
+| **[Squeeze](#squeeze)** | Compress video, photos, and files/folders | `python run_squeeze.py` |
 
 Both are separate windows/apps (run whichever you need), and both share a
 small `shared/` package (background-thread runner, safe quarantine-delete,
 byte-size formatting) so they behave consistently.
 
-## Requirements
+## Installing
 
-- Python 3.9+
-- Tkinter (bundled with the standard python.org installers for
-  Windows/macOS; on Linux, install your distro's Tk package if it's
-  missing, e.g. `sudo apt install python3-tk` on Debian/Ubuntu)
-- `pip install -r requirements.txt` for the optional bits: `psutil`
-  (Dissect's System Monitor tab) and `Pillow` (Squeeze's Photos tab)
-- **ffmpeg** on PATH, for Squeeze's Video tab only (see below) — install
-  via `sudo apt install ffmpeg`, `brew install ffmpeg`, or ffmpeg.org.
-  Every other tab/feature in both apps works without it.
+There's no installer/package published yet — you run these straight from
+a checkout of this repo. Two ways to do that, depending on how comfortable
+you are with Python:
+
+### Option A — run from source (works today, needs Python)
 
 ```bash
+git clone <this-repo-url>
+cd FIRST-TOOL
+python3 -m venv .venv && source .venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
-python run.py              # Dissect
-python run_compressor.py   # Squeeze
+python run_sweep.py      # or: python run_squeeze.py
 ```
+
+Requirements:
+- Python 3.9+
+- Tkinter — bundled with the standard python.org installers for
+  Windows/macOS; on Linux, install your distro's Tk package if it's
+  missing, e.g. `sudo apt install python3-tk` on Debian/Ubuntu
+- `pip install -r requirements.txt` covers the optional bits: `psutil`
+  (Sweep's System Monitor tab) and `Pillow` (Squeeze's Photos tab)
+- **ffmpeg** on PATH, for Squeeze's Video tab only — install via
+  `sudo apt install ffmpeg`, `brew install ffmpeg`, or ffmpeg.org.
+  Every other tab/feature in both apps works without it.
+
+### Option B — build a standalone executable (no Python needed to run it)
+
+For someone who just wants to double-click an app, build a one-file
+executable with [PyInstaller](https://pyinstaller.org/) **on the same OS
+you want to run it on** (PyInstaller doesn't cross-compile — build the
+Windows exe on Windows, the macOS app on macOS, etc.):
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pyinstaller packaging/sweep.spec
+pyinstaller packaging/squeeze.spec
+```
+
+This produces `dist/Sweep` and `dist/Squeeze` (`.exe` on Windows, a
+`.app` bundle on macOS) — copy that file anywhere and run it; nothing
+else needs to be installed alongside it (ffmpeg for Squeeze's Video tab
+is still a separate system install, since bundling ffmpeg's binary
+isn't done here — see `packaging/README.md`).
+
+If you push a `v*` git tag, `.github/workflows/build.yml` builds all of
+this for Windows/macOS/Linux automatically and attaches the executables
+to a GitHub Release, so most people can just download a file from the
+Releases page instead of building it themselves. See
+`packaging/README.md` for details on both paths.
 
 ## Testing
 
@@ -47,20 +81,20 @@ To smoke-test the actual GUIs end-to-end (drives the real Tk widgets and
 background threads, requires a display or Xvfb):
 
 ```bash
-xvfb-run -a python3 scripts/gui_smoke_test.py          # Dissect
-xvfb-run -a python3 scripts/compressor_smoke_test.py   # Squeeze
+xvfb-run -a python3 scripts/sweep_smoke_test.py     # Sweep
+xvfb-run -a python3 scripts/squeeze_smoke_test.py   # Squeeze
 ```
 
 ---
 
-## Dissect
+## Sweep
 
 Inspired by [DissectMac](https://dissectmac.com/), built cross-platform
 (Windows / macOS / Linux).
 
 **Philosophy:** the one destructive action the app offers (removing
 files) never permanently deletes anything — it moves files to a local
-quarantine folder (`~/.dissect_trash`) that you can restore from.
+quarantine folder (`~/.sweep_trash`) that you can restore from.
 
 ### Features
 
@@ -77,11 +111,11 @@ quarantine folder (`~/.dissect_trash`) that you can restore from.
 ### Project layout
 
 ```
-desktop_utility/
+sweep/
   core/            # diskscan (treemap), duplicates, largefiles, sysmon
   gui/             # Tkinter widgets, one file per tab
   app.py           # builds the main window and wires the tabs together
-run.py             # entry point
+run_sweep.py       # entry point
 ```
 
 ### Roadmap ideas (not implemented yet)
@@ -91,7 +125,6 @@ run.py             # entry point
   where apps leave data behind (`~/Library` on macOS, `%APPDATA%` on
   Windows, `~/.config`/`~/.cache` on Linux), which is why it's left out
   of this first pass rather than shipped half-right.
-- Packaging as a standalone binary (PyInstaller) per platform.
 
 ---
 
@@ -100,7 +133,7 @@ run.py             # entry point
 A local video/photo/file compressor — the "make this smaller" HandBrake-
 style workflow (batch queue, presets, progress, cancel), but also
 covering photos and generic files, and built the same local-only way as
-Dissect. Every tab processes a batch on a background thread so the
+Sweep. Every tab processes a batch on a background thread so the
 window never freezes, and every job can be cancelled mid-run.
 
 ### Features
@@ -127,7 +160,7 @@ already taken).
 ### Project layout
 
 ```
-compressor/
+squeeze/
   core/            # No Tkinter import — unit-tested directly
     ffmpeg_util.py    # find ffmpeg/ffprobe, probe duration/resolution
     video.py           # build the ffmpeg command, run it, parse progress
@@ -138,7 +171,7 @@ compressor/
     batch.py          # sequential background batch-job runner (shared
                        # by the Video and Photo tabs)
   app.py           # builds the main window and wires the tabs together
-run_compressor.py  # entry point
+run_squeeze.py     # entry point
 ```
 
 ### Roadmap ideas (not implemented yet)
@@ -160,7 +193,7 @@ shared/
   workers.py    # CancellableTask: background-thread + queue polling
                  # helper so a scan/compress never freezes the UI
   safedelete.py  # quarantine/restore instead of permanent delete (used
-                  # by Dissect; available to Squeeze if it ever needs it)
+                  # by Sweep; available to Squeeze if it ever needs it)
   format.py       # human_size() etc.
   theme.py         # shared color/font constants
 ```

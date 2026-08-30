@@ -5,3 +5,8 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# PyInstaller build output (see packaging/README.md)
+/build/
+/dist/
+/out/

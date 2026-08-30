@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 
 def default_quarantine_root() -> str:
-    return os.path.join(os.path.expanduser("~"), ".dissect_trash")
+    return os.path.join(os.path.expanduser("~"), ".sweep_trash")
 
 
 @dataclass
