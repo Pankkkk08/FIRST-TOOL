@@ -55,30 +55,25 @@ jobs:
         if: runner.os == 'macOS'
         run: python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze.app/Contents/MacOS/Squeeze
 
-      - name: Package artifact (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p out
-          tar -C dist -czf out/Squeeze-linux-x86_64.tar.gz Squeeze
-
-      - name: Package artifact (Windows)
-        if: runner.os == 'Windows'
+      # Upload the raw build output directly rather than pre-zipping it
+      # ourselves — actions/upload-artifact always wraps whatever it's
+      # given in one zip for download regardless, so pre-zipping here
+      # would leave whoever downloads it with a zip inside a zip. This way
+      # it's download -> extract once -> the app is right there.
+      - name: Select build output path
+        id: artifact_path
         shell: bash
         run: |
-          mkdir -p out
-          cd dist
-          7z a ../out/Squeeze-windows-x86_64.zip Squeeze.exe
-
-      - name: Package artifact (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          mkdir -p out
-          ditto -c -k --sequesterRsrc --keepParent dist/Squeeze.app out/Squeeze-macos.zip
+          case "${{ runner.os }}" in
+            Linux) echo "path=dist/Squeeze" >> "$GITHUB_OUTPUT" ;;
+            Windows) echo "path=dist/Squeeze.exe" >> "$GITHUB_OUTPUT" ;;
+            macOS) echo "path=dist/Squeeze.app" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - uses: actions/upload-artifact@v4
         with:
-          name: executable-${{ matrix.os }}
-          path: out/*
+          name: Squeeze-${{ runner.os }}
+          path: ${{ steps.artifact_path.outputs.path }}
           if-no-files-found: error
 
   release:
@@ -92,6 +87,21 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      # Release assets must be individual files — the macOS build is
+      # uploaded as a raw .app *directory* (nicer for a plain artifact
+      # download: extract once, the app is right there), so zip it here
+      # for the one path that actually requires a single file.
+      - name: Zip any directory artifacts (e.g. Squeeze.app) for release upload
+        run: |
+          cd artifacts
+          for d in */; do
+            d="${d%/}"
+            if [ -d "$d" ]; then
+              zip -r -y "${d}.zip" "$d"
+              rm -rf "$d"
+            fi
+          done
 
       - name: Create release and attach executable
         uses: softprops/action-gh-release@v2
