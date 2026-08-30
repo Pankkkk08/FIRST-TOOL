@@ -33,6 +33,24 @@ never freezes, and every job can be cancelled mid-run. None of the three
 tabs overwrite your originals or an existing output file — outputs get a
 `_compressed` suffix (or `_2`, `_3`, ... if that's already taken).
 
+### Design
+
+A real glassmorphism UI, not an imitation: a soft gradient wallpaper is
+rendered once, and each panel's background is that same wallpaper region
+actually Gaussian-blurred and tinted with Pillow, then drawn as a rounded
+glass card — genuine backdrop blur, just not a *live* one (stock Tkinter
+has no compositor hook for that; nothing behind these panels moves, so
+it isn't a visible difference). Buttons, toggle switches, and tab pills
+are custom-drawn to match instead of native OS chrome dropped onto a
+colorful background. See `squeeze/gui/glass.py` for the technique.
+
+The window is fixed-size (not resizable) — every tab is hand-laid-out on
+a canvas rather than a widget grid that reflows, and re-rendering
+blurred panel art on every live-resize frame isn't worth the cost for a
+compact utility window. If that ever needs to change, `GlassCanvas`
+would need a real build-once/layout-on-resize split (documented in its
+docstring) rather than redrawing from scratch each time.
+
 ## Installing
 
 There's no installer/package published yet — you run this straight from
@@ -114,11 +132,16 @@ squeeze/
     common.py            # shared CompressResult dataclass
     format.py             # human_size() etc.
   gui/             # Tkinter widgets, one file per tab
-    workers.py         # CancellableTask: background-thread + queue
-                        # polling helper so a job never freezes the UI
-    batch.py             # sequential background batch-job runner
-                          # (shared by the Video and Photo tabs)
-  app.py           # builds the main window and wires the tabs together
+    glass.py            # the glassmorphism toolkit: wallpaper generation,
+                         # blurred/tinted panels, custom buttons/toggles,
+                         # ttk theming for the widgets that stay native
+    layout.py             # small label+field row-layout helper
+    workers.py             # CancellableTask: background-thread + queue
+                            # polling helper so a job never freezes the UI
+    batch.py                 # sequential background batch-job runner
+                              # (shared by the Video and Photo tabs)
+  app.py           # builds the main window, header/tab-switcher, wires
+                    # the tabs together
 run_squeeze.py     # entry point
 ```
 

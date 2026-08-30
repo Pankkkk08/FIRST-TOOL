@@ -1,4 +1,6 @@
-"""Video compression tab: batch queue + ffmpeg options + progress."""
+"""Video compression tab: batch queue + ffmpeg options + progress, on a
+glass canvas.
+"""
 
 from __future__ import annotations
 
@@ -23,6 +25,15 @@ from squeeze.core.video import (
     default_preset_for_codec,
 )
 from squeeze.gui.batch import BatchRunner
+from squeeze.gui.glass import (
+    DANGER,
+    FONT_CAPTION,
+    FONT_HEADING,
+    GlassCanvas,
+    TEXT_FAINT,
+    TEXT_MUTED,
+)
+from squeeze.gui.layout import RowBuilder
 
 RESOLUTIONS = {
     "Keep original": None,
@@ -52,154 +63,153 @@ PROFILES_BY_CODEC = {
     "libsvtav1": [NO_PROFILE],
 }
 
-CUSTOM_PRESET = "Custom (set options below)"
+CUSTOM_PRESET = "Custom (set below)"
 
 
-class VideoTab(ttk.Frame):
+class VideoTab(GlassCanvas):
     def __init__(self, master):
         super().__init__(master)
         self._items: list[str] = []
         self._runner: BatchRunner | None = None
-        self._row_start_size: dict[str, int] = {}
-        self._build_widgets()
-        self._check_ffmpeg()
 
-    # -- layout ---------------------------------------------------------
-    def _build_widgets(self) -> None:
-        self.warning_var = tk.StringVar(value="")
-        ttk.Label(self, textvariable=self.warning_var, foreground="#c0392b", wraplength=820).pack(
-            anchor="w", padx=8, pady=(6, 0)
-        )
+    # -- layout -----------------------------------------------------------
+    def draw(self) -> None:
+        w, h = self.winfo_width(), self.winfo_height()
 
-        queue_btns = ttk.Frame(self)
-        queue_btns.pack(fill="x", padx=8, pady=6)
-        ttk.Button(queue_btns, text="Add Files…", command=self._add_files).pack(side="left")
-        ttk.Button(queue_btns, text="Add Folder…", command=self._add_folder).pack(side="left", padx=4)
-        ttk.Button(queue_btns, text="Remove Selected", command=self._remove_selected).pack(side="left", padx=4)
-        ttk.Button(queue_btns, text="Clear", command=self._clear_queue).pack(side="left", padx=4)
+        # -- Queue panel --------------------------------------------------
+        queue_top, queue_h = 16, 260
+        self.panel(20, queue_top, w - 40, queue_h)
+        self.text(40, queue_top + 22, "Queue", font=FONT_HEADING)
 
-        columns = ("name", "status", "progress", "saved")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="extended", height=8)
-        for col, label, width, anchor in [
-            ("name", "File", 380, "w"),
-            ("status", "Status", 140, "w"),
-            ("progress", "Progress", 140, "center"),
-            ("saved", "Saved", 120, "e"),
-        ]:
-            self.tree.heading(col, text=label)
-            self.tree.column(col, width=width, anchor=anchor)
-        self.tree.pack(fill="both", expand=True, padx=8, pady=4)
+        bx = w - 40
+        self.clear_btn = self.button(0, 0, 90, 32, "Clear", self._clear_queue, style="ghost", font=FONT_CAPTION)
+        self.remove_btn = self.button(0, 0, 130, 32, "Remove Selected", self._remove_selected, style="ghost", font=FONT_CAPTION)
+        self.add_folder_btn = self.button(0, 0, 110, 32, "Add Folder…", self._add_folder, style="ghost", font=FONT_CAPTION)
+        self.add_files_btn = self.button(0, 0, 100, 32, "Add Files…", self._add_files, style="primary", font=FONT_CAPTION)
+        for btn, bw in [(self.clear_btn, 90), (self.remove_btn, 130), (self.add_folder_btn, 110), (self.add_files_btn, 100)]:
+            bx -= bw
+            self._move_button(btn, bx, queue_top + 16)
+            bx -= 10
 
-        options = ttk.LabelFrame(self, text="Options")
-        options.pack(fill="x", padx=8, pady=6)
+        tree_frame, self.tree = _build_queue_treeview(self)
+        self.embed(40, queue_top + 60, tree_frame, width=w - 80, height=queue_h - 76)
 
-        row0 = ttk.Frame(options)
-        row0.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row0, text="Quality preset:").pack(side="left")
+        self.warning_id = self.text(40, queue_top + queue_h - 4, "", font=FONT_CAPTION, fill=DANGER, anchor="sw")
+
+        # -- Options panel --------------------------------------------------
+        opts_top = queue_top + queue_h + 16
+        opts_h = h - opts_top - 16
+        self.panel(20, opts_top, w - 40, opts_h)
+
+        row = RowBuilder(self, 40, opts_top + 22)
+        row.label("Quality preset:", 120)
         self.quality_preset_var = tk.StringVar(value=CUSTOM_PRESET)
         preset_names = [CUSTOM_PRESET] + list(QUALITY_PRESETS.keys())
-        preset_picker = ttk.Combobox(
-            row0, textvariable=self.quality_preset_var, values=preset_names, state="readonly", width=24
+        preset_combo = ttk.Combobox(
+            self, textvariable=self.quality_preset_var, values=preset_names,
+            state="readonly", style="Glass.TCombobox", width=26,
         )
-        preset_picker.pack(side="left", padx=4)
-        preset_picker.bind("<<ComboboxSelected>>", lambda e: self._on_quality_preset_changed())
+        preset_combo.bind("<<ComboboxSelected>>", lambda e: self._on_quality_preset_changed())
+        row.field(preset_combo, 210)
+        self.text(
+            row.x, row.y + 13, "picks Codec/Quality/Speed/Profile below — HandBrake's own numbers",
+            font=FONT_CAPTION, fill=TEXT_MUTED,
+        )
 
-        row0b = ttk.Frame(options)
-        row0b.pack(fill="x", padx=6)
-        ttk.Label(
-            row0b,
-            text="(fills in Codec/Quality/Speed/Profile below with HandBrake's own"
-            " Fast/HQ/Super HQ numbers — still editable after)",
-            foreground="#666666",
-        ).pack(anchor="w")
-
-        row1 = ttk.Frame(options)
-        row1.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row1, text="Codec:").pack(side="left")
+        row.newline(40)
+        row.label("Codec:", 60)
         self.codec_var = tk.StringVar(value=next(iter(VIDEO_CODECS)))
         codec_combo = ttk.Combobox(
-            row1, textvariable=self.codec_var, values=list(VIDEO_CODECS.keys()), state="readonly", width=42
+            self, textvariable=self.codec_var, values=list(VIDEO_CODECS.keys()),
+            state="readonly", style="Glass.TCombobox", width=48,
         )
-        codec_combo.pack(side="left", padx=(4, 16))
         codec_combo.bind("<<ComboboxSelected>>", lambda e: self._on_codec_changed())
-
-        ttk.Label(row1, text="Speed:").pack(side="left")
+        row.field(codec_combo, 400)
+        row.label("Speed:", 55)
         self.preset_var = tk.StringVar(value="medium")
         self.preset_combo = ttk.Combobox(
-            row1, textvariable=self.preset_var, values=PRESETS_X26X, state="readonly", width=12
+            self, textvariable=self.preset_var, values=PRESETS_X26X,
+            state="readonly", style="Glass.TCombobox", width=11,
         )
-        self.preset_combo.pack(side="left", padx=4)
+        row.field(self.preset_combo, 100)
 
-        # Split across multiple rows (rather than one long one) so nothing
-        # gets clipped off the right edge at the window's minimum width.
-        row2 = ttk.Frame(options)
-        row2.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row2, text="Quality (CRF, lower = better):").pack(side="left")
+        row.newline(40)
+        row.label("Quality (CRF):", 108)
         self.crf_var = tk.IntVar(value=DEFAULT_CRF["libx264"])
-        ttk.Spinbox(row2, from_=0, to=51, textvariable=self.crf_var, width=6).pack(side="left", padx=4)
-
-        ttk.Label(row2, text="  Profile:").pack(side="left", padx=(16, 0))
+        crf_spin = ttk.Spinbox(self, from_=0, to=51, textvariable=self.crf_var, style="Glass.TSpinbox", width=5)
+        row.field(crf_spin, 55)
+        row.label("Profile:", 58)
         self.profile_var = tk.StringVar(value=NO_PROFILE)
         self.profile_combo = ttk.Combobox(
-            row2, textvariable=self.profile_var, values=PROFILES_BY_CODEC["libx264"], state="readonly", width=10
+            self, textvariable=self.profile_var, values=PROFILES_BY_CODEC["libx264"],
+            state="readonly", style="Glass.TCombobox", width=11,
         )
-        self.profile_combo.pack(side="left", padx=4)
-
-        ttk.Label(row2, text="  Resolution:").pack(side="left", padx=(16, 0))
+        row.field(self.profile_combo, 90)
+        row.label("Resolution:", 82)
         self.resolution_var = tk.StringVar(value="Keep original")
-        ttk.Combobox(
-            row2, textvariable=self.resolution_var, values=list(RESOLUTIONS.keys()), state="readonly", width=14
-        ).pack(side="left", padx=4)
+        resolution_combo = ttk.Combobox(
+            self, textvariable=self.resolution_var, values=list(RESOLUTIONS.keys()),
+            state="readonly", style="Glass.TCombobox", width=15,
+        )
+        row.field(resolution_combo, 135)
 
-        row2b = ttk.Frame(options)
-        row2b.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row2b, text="Audio:").pack(side="left")
+        row.newline(40)
+        row.label("Audio:", 58)
         self.audio_var = tk.StringVar(value="Copy (no re-encode)")
-        ttk.Combobox(
-            row2b, textvariable=self.audio_var, values=list(AUDIO_MODES.keys()), state="readonly", width=20
-        ).pack(side="left", padx=4)
-
-        ttk.Label(row2b, text="  Container:").pack(side="left", padx=(16, 0))
+        audio_combo = ttk.Combobox(
+            self, textvariable=self.audio_var, values=list(AUDIO_MODES.keys()),
+            state="readonly", style="Glass.TCombobox", width=22,
+        )
+        row.field(audio_combo, 190)
+        row.label("Container:", 78)
         self.container_var = tk.StringVar(value="mp4")
-        ttk.Combobox(row2b, textvariable=self.container_var, values=CONTAINERS, state="readonly", width=6).pack(
-            side="left", padx=4
+        container_combo = ttk.Combobox(
+            self, textvariable=self.container_var, values=CONTAINERS,
+            state="readonly", style="Glass.TCombobox", width=6,
         )
-
+        row.field(container_combo, 65)
         self.deinterlace_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            row2b, text="Deinterlace (old/DVD sources)", variable=self.deinterlace_var
-        ).pack(side="left", padx=(16, 0))
+        self.deinterlace_toggle = self.toggle(row.x, row.y + 2, False, self._on_deinterlace_toggled)
+        self.text(row.x + 50, row.y + 13, "Deinterlace (old/DVD)", font=FONT_CAPTION, fill=TEXT_MUTED)
 
-        row3 = ttk.Frame(options)
-        row3.pack(fill="x", padx=6, pady=3)
-        ttk.Label(row3, text="Output folder:").pack(side="left")
+        row.newline(40, dy=44)
+        row.label("Output folder:", 108)
         self.output_dir_var = tk.StringVar(value="")
-        ttk.Entry(row3, textvariable=self.output_dir_var).pack(side="left", padx=4, fill="x", expand=True)
-        ttk.Button(row3, text="Browse…", command=self._browse_output_dir).pack(side="left")
+        out_entry = ttk.Entry(self, textvariable=self.output_dir_var, style="Glass.TEntry")
+        row.field(out_entry, 560)
+        browse_btn = self.button(0, 0, 90, 30, "Browse…", self._browse_output_dir, style="ghost", font=FONT_CAPTION)
+        self._move_button(browse_btn, row.x, row.y - 2)
 
-        row3b = ttk.Frame(options)
-        row3b.pack(fill="x", padx=6)
-        ttk.Label(row3b, text="(blank = same folder as each source file)", foreground="#666666").pack(
-            anchor="w"
-        )
+        row.newline(40, dy=40)
+        self.text(row.x, row.y, "blank = same folder as each source file", font=FONT_CAPTION, fill=TEXT_MUTED)
 
-        bottom = ttk.Frame(self)
-        bottom.pack(fill="x", padx=8, pady=6)
-        self.start_btn = ttk.Button(bottom, text="Start Compressing", command=self._start)
-        self.start_btn.pack(side="left")
-        self.cancel_btn = ttk.Button(bottom, text="Cancel", command=self._cancel, state="disabled")
-        self.cancel_btn.pack(side="left", padx=4)
+        row.newline(40, dy=44)
+        self.start_btn = self.button(row.x, row.y - 4, 170, 38, "Start Compressing", self._start, style="primary")
+        self.cancel_btn = self.button(row.x + 182, row.y - 4, 110, 38, "Cancel", self._cancel, style="danger")
+        self.cancel_btn.set_enabled(False)
+        self.status_var = tk.StringVar(value="")
+        self.status_text_id = self.text(row.x + 310, row.y + 15, "", font=FONT_CAPTION, fill=TEXT_MUTED, anchor="w")
 
-        self.overall_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.overall_var).pack(side="left", padx=12)
+        self._refresh_status_text()
+        self._check_ffmpeg()
+
+    def _move_button(self, btn, x, y) -> None:
+        btn.x, btn.y = x, y
+        self.coords(btn.image_id, x, y)
+        self.coords(btn.text_id, x + btn.w / 2, y + btn.h / 2)
+
+    def _refresh_status_text(self, *_args) -> None:
+        self.itemconfig(self.status_text_id, text=self.status_var.get())
 
     def _check_ffmpeg(self) -> None:
         if not find_ffmpeg() or not find_ffprobe():
-            self.warning_var.set(
-                "ffmpeg/ffprobe were not found on PATH. Install ffmpeg to use this tab "
-                "(e.g. `sudo apt install ffmpeg`, `brew install ffmpeg`, or download from ffmpeg.org)."
+            self.itemconfig(
+                self.warning_id,
+                text="ffmpeg/ffprobe not found on PATH — install ffmpeg to use this tab "
+                "(sudo apt install ffmpeg / brew install ffmpeg / ffmpeg.org)",
             )
-            self.start_btn.config(state="disabled")
+            self.add_files_btn.set_enabled(False)
+            self.start_btn.set_enabled(False)
 
     def _on_codec_changed(self) -> None:
         codec = VIDEO_CODECS[self.codec_var.get()]
@@ -216,14 +226,15 @@ class VideoTab(ttk.Frame):
         if name == CUSTOM_PRESET:
             return
         preset = QUALITY_PRESETS[name]
-        # Find the display label VIDEO_CODECS uses for this codec so the
-        # combobox shows the right entry, not the raw ffmpeg encoder name.
         codec_label = next(k for k, v in VIDEO_CODECS.items() if v == preset.codec)
         self.codec_var.set(codec_label)
-        self._on_codec_changed()  # refreshes speed/profile choices for the new codec
+        self._on_codec_changed()
         self.crf_var.set(preset.crf)
         self.preset_var.set(preset.speed)
         self.profile_var.set(preset.profile or NO_PROFILE)
+
+    def _on_deinterlace_toggled(self, on: bool) -> None:
+        self.deinterlace_var.set(on)
 
     # -- queue management -------------------------------------------------
     def _add_files(self) -> None:
@@ -282,7 +293,6 @@ class VideoTab(ttk.Frame):
         stem = os.path.splitext(os.path.basename(input_path))[0]
         ext = "." + self.container_var.get()
         candidate = os.path.join(out_dir, f"{stem}_compressed{ext}")
-        # Never silently overwrite an existing file from a previous run.
         n = 2
         while os.path.exists(candidate):
             candidate = os.path.join(out_dir, f"{stem}_compressed_{n}{ext}")
@@ -301,16 +311,12 @@ class VideoTab(ttk.Frame):
             self.tree.set(p, "progress", "")
             self.tree.set(p, "saved", "")
 
-        self.start_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
+        self.start_btn.set_enabled(False)
+        self.cancel_btn.set_enabled(True)
         self._runner = BatchRunner()
         runner = self._runner
 
         def job(item: str, should_stop, report):
-            # Never touch Tkinter widgets from this thread directly — route
-            # every UI update through `report()`, which hands it to the main
-            # thread via BatchRunner's queue. fraction=-2 is a status-text-only
-            # update (see on_progress below), fraction=-1 is speed-only.
             out_path = out_paths[item]
             report(-2, "Probing…")
             try:
@@ -357,14 +363,37 @@ class VideoTab(ttk.Frame):
             )
 
         def on_all_done():
-            self.start_btn.config(state="normal")
-            self.cancel_btn.config(state="disabled")
-            self.overall_var.set("Done." if not runner.should_stop() else "Cancelled.")
+            self.start_btn.set_enabled(True)
+            self.cancel_btn.set_enabled(False)
+            self.status_var.set("Done." if not runner.should_stop() else "Cancelled.")
+            self._refresh_status_text()
 
-        self.overall_var.set(f"Processing {len(self._items)} file(s)…")
+        self.status_var.set(f"Processing {len(self._items)} file(s)…")
+        self._refresh_status_text()
         runner.start(self, list(self._items), job, on_progress, on_item_done, on_all_done)
 
     def _cancel(self) -> None:
         if self._runner is not None:
             self._runner.cancel()
-            self.cancel_btn.config(state="disabled")
+            self.cancel_btn.set_enabled(False)
+
+
+def _build_queue_treeview(parent) -> tuple[tk.Frame, ttk.Treeview]:
+    frame = tk.Frame(parent, background="#1c1e30")
+    columns = ("name", "status", "progress", "saved")
+    tree = ttk.Treeview(
+        frame, columns=columns, show="headings", selectmode="extended", style="Glass.Treeview"
+    )
+    for col, label, width, anchor in [
+        ("name", "File", 380, "w"),
+        ("status", "Status", 150, "w"),
+        ("progress", "Progress", 150, "center"),
+        ("saved", "Saved", 120, "e"),
+    ]:
+        tree.heading(col, text=label)
+        tree.column(col, width=width, anchor=anchor)
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview, style="Glass.Vertical.TScrollbar")
+    tree.configure(yscrollcommand=scrollbar.set)
+    tree.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    return frame, tree

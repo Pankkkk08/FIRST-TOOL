@@ -1,7 +1,7 @@
 """Files/folders archive tab: bundle into one archive, or gzip each file
 individually — two different shapes of "compress my files", both offered
 since they solve different problems (one shareable file vs. many smaller
-individual files).
+individual files). Glass-canvas presentation.
 """
 
 from __future__ import annotations
@@ -10,88 +10,118 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from squeeze.core.format import human_size
-from squeeze.gui.workers import CancellableTask
 from squeeze.core.archive import (
     ARCHIVE_FORMATS,
     create_archive,
     default_archive_extension,
     gzip_files_individually,
 )
+from squeeze.core.format import human_size
+from squeeze.gui.glass import FONT_CAPTION, FONT_HEADING, GlassCanvas, TEXT_FAINT, TEXT_MUTED
+from squeeze.gui.layout import RowBuilder
+from squeeze.gui.workers import CancellableTask
 
 
-class ArchiveTab(ttk.Frame):
+class ArchiveTab(GlassCanvas):
     def __init__(self, master):
         super().__init__(master)
         self._items: list[str] = []
         self._task: CancellableTask | None = None
-        self._build_widgets()
+        self._task_running = False
 
-    def _build_widgets(self) -> None:
-        queue_btns = ttk.Frame(self)
-        queue_btns.pack(fill="x", padx=8, pady=6)
-        ttk.Button(queue_btns, text="Add Files…", command=self._add_files).pack(side="left")
-        ttk.Button(queue_btns, text="Add Folder…", command=self._add_folder).pack(side="left", padx=4)
-        ttk.Button(queue_btns, text="Remove Selected", command=self._remove_selected).pack(side="left", padx=4)
-        ttk.Button(queue_btns, text="Clear", command=self._clear_queue).pack(side="left", padx=4)
+    def draw(self) -> None:
+        w, h = self.winfo_width(), self.winfo_height()
 
-        self.listbox = tk.Listbox(self, selectmode="extended", height=10)
-        self.listbox.pack(fill="both", expand=True, padx=8, pady=4)
+        # -- Files panel --------------------------------------------------
+        queue_top, queue_h = 16, 280
+        self.panel(20, queue_top, w - 40, queue_h)
+        self.text(40, queue_top + 22, "Files & Folders", font=FONT_HEADING)
 
-        mode_frame = ttk.LabelFrame(self, text="Mode")
-        mode_frame.pack(fill="x", padx=8, pady=6)
+        bx = w - 40
+        self.clear_btn = self.button(0, 0, 90, 32, "Clear", self._clear_queue, style="ghost", font=FONT_CAPTION)
+        self.remove_btn = self.button(0, 0, 130, 32, "Remove Selected", self._remove_selected, style="ghost", font=FONT_CAPTION)
+        self.add_folder_btn = self.button(0, 0, 110, 32, "Add Folder…", self._add_folder, style="ghost", font=FONT_CAPTION)
+        self.add_files_btn = self.button(0, 0, 100, 32, "Add Files…", self._add_files, style="primary", font=FONT_CAPTION)
+        for btn, bw in [(self.clear_btn, 90), (self.remove_btn, 130), (self.add_folder_btn, 110), (self.add_files_btn, 100)]:
+            bx -= bw
+            self._move_button(btn, bx, queue_top + 16)
+            bx -= 10
+
+        self.listbox = tk.Listbox(
+            self, selectmode="extended", background="#1c1e30", foreground="#f4f4f8",
+            selectbackground="#8b7cf6", selectforeground="#151221", borderwidth=0,
+            highlightthickness=0, font=("Helvetica", 10), activestyle="none",
+        )
+        self.embed(40, queue_top + 60, self.listbox, width=w - 80, height=queue_h - 76)
+
+        # -- Mode & options panel --------------------------------------------------
+        opts_top = queue_top + queue_h + 16
+        opts_h = h - opts_top - 16
+        self.panel(20, opts_top, w - 40, opts_h)
+
         self.mode_var = tk.StringVar(value="bundle")
-        ttk.Radiobutton(
-            mode_frame, text="Bundle into one archive", variable=self.mode_var, value="bundle",
-            command=self._on_mode_changed,
-        ).pack(side="left", padx=6, pady=4)
-        ttk.Radiobutton(
-            mode_frame, text="Compress each file individually (.gz)", variable=self.mode_var, value="gzip",
-            command=self._on_mode_changed,
-        ).pack(side="left", padx=6, pady=4)
+        self.text(40, opts_top + 20, "Mode:", font=FONT_CAPTION, fill=TEXT_MUTED)
+        self.bundle_btn = self.button(
+            110, opts_top + 8, 220, 32, "Bundle into one archive",
+            lambda: self._set_mode("bundle"), style="primary", font=FONT_CAPTION,
+        )
+        self.gzip_btn = self.button(
+            340, opts_top + 8, 230, 32, "Compress each file (.gz)",
+            lambda: self._set_mode("gzip"), style="ghost", font=FONT_CAPTION,
+        )
 
-        self.bundle_options = ttk.Frame(self)
-        self.bundle_options.pack(fill="x", padx=8, pady=3)
-        ttk.Label(self.bundle_options, text="Format:").pack(side="left")
+        row = RowBuilder(self, 40, opts_top + 68)
+        row.label("Archive format:", 112)
         self.format_var = tk.StringVar(value=next(iter(ARCHIVE_FORMATS)))
-        ttk.Combobox(
-            self.bundle_options, textvariable=self.format_var, values=list(ARCHIVE_FORMATS.keys()),
-            state="readonly", width=32,
-        ).pack(side="left", padx=4)
-
-        ttk.Label(self.bundle_options, text="  Compression level:").pack(side="left", padx=(12, 0))
+        self.format_combo = ttk.Combobox(
+            self, textvariable=self.format_var, values=list(ARCHIVE_FORMATS.keys()),
+            state="readonly", style="Glass.TCombobox", width=39,
+        )
+        row.field(self.format_combo, 340)
+        row.label("Compression level:", 138)
         self.level_var = tk.IntVar(value=6)
-        ttk.Scale(
-            self.bundle_options, from_=0, to=9, orient="horizontal", variable=self.level_var, length=140
-        ).pack(side="left", padx=4)
-        ttk.Label(self.bundle_options, text="(0=fastest, 9=smallest)").pack(side="left")
+        self.level_scale = ttk.Scale(
+            self, from_=0, to=9, orient="horizontal", variable=self.level_var, length=140,
+            style="Glass.Horizontal.TScale",
+        )
+        row.field(self.level_scale, 150)
+        self.text(row.x, row.y + 13, "0 = fastest, 9 = smallest", font=FONT_CAPTION, fill=TEXT_MUTED)
 
-        row = ttk.Frame(self)
-        row.pack(fill="x", padx=8, pady=3)
-        ttk.Label(row, text="Output folder:").pack(side="left")
+        row.newline(40, dy=44)
+        row.label("Output folder:", 108)
         self.output_dir_var = tk.StringVar(value="")
-        ttk.Entry(row, textvariable=self.output_dir_var).pack(side="left", padx=4, fill="x", expand=True)
-        ttk.Button(row, text="Browse…", command=self._browse_output_dir).pack(side="left")
+        out_entry = ttk.Entry(self, textvariable=self.output_dir_var, style="Glass.TEntry")
+        row.field(out_entry, 560)
+        browse_btn = self.button(0, 0, 90, 30, "Browse…", self._browse_output_dir, style="ghost", font=FONT_CAPTION)
+        self._move_button(browse_btn, row.x, row.y - 2)
 
-        row_hint = ttk.Frame(self)
-        row_hint.pack(fill="x", padx=8)
-        ttk.Label(
-            row_hint, text="(blank = same folder as source, gzip mode only)", foreground="#666666"
-        ).pack(anchor="w")
+        row.newline(40, dy=40)
+        self.text(row.x, row.y, "blank = same folder as source (gzip mode only)", font=FONT_CAPTION, fill=TEXT_MUTED)
 
-        bottom = ttk.Frame(self)
-        bottom.pack(fill="x", padx=8, pady=6)
-        self.start_btn = ttk.Button(bottom, text="Compress", command=self._start)
-        self.start_btn.pack(side="left")
-        self.cancel_btn = ttk.Button(bottom, text="Cancel", command=self._cancel, state="disabled")
-        self.cancel_btn.pack(side="left", padx=4)
+        row.newline(40, dy=44)
+        self.start_btn = self.button(row.x, row.y - 4, 150, 38, "Compress", self._start, style="primary")
+        self.cancel_btn = self.button(row.x + 162, row.y - 4, 110, 38, "Cancel", self._cancel, style="danger")
+        self.cancel_btn.set_enabled(False)
         self.status_var = tk.StringVar(value="")
-        ttk.Label(bottom, textvariable=self.status_var, wraplength=600).pack(side="left", padx=12)
+        self.status_text_id = self.text(
+            row.x + 290, row.y + 8, "", font=FONT_CAPTION, fill=TEXT_MUTED, anchor="nw", width=w - 40 - (row.x + 290)
+        )
 
-    def _on_mode_changed(self) -> None:
-        state = "normal" if self.mode_var.get() == "bundle" else "disabled"
-        for child in self.bundle_options.winfo_children():
-            child.configure(state=state if not isinstance(child, ttk.Label) else "normal")
+    def _move_button(self, btn, x, y) -> None:
+        btn.x, btn.y = x, y
+        self.coords(btn.image_id, x, y)
+        self.coords(btn.text_id, x + btn.w / 2, y + btn.h / 2)
+
+    def _refresh_status_text(self) -> None:
+        self.itemconfig(self.status_text_id, text=self.status_var.get())
+
+    def _set_mode(self, mode: str) -> None:
+        self.mode_var.set(mode)
+        self.bundle_btn.set_style("primary" if mode == "bundle" else "ghost")
+        self.gzip_btn.set_style("primary" if mode == "gzip" else "ghost")
+        state = "readonly" if mode == "bundle" else "disabled"
+        self.format_combo.config(state=state)
+        self.level_scale.config(state="normal" if mode == "bundle" else "disabled")
 
     # -- queue management -------------------------------------------------
     def _add_files(self) -> None:
@@ -155,8 +185,9 @@ class ArchiveTab(ttk.Frame):
         items = list(self._items)
         self._progress_text = f"Compressing {len(items)} item(s)…"
         self.status_var.set(self._progress_text)
-        self.start_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
+        self._refresh_status_text()
+        self.start_btn.set_enabled(False)
+        self.cancel_btn.set_enabled(True)
         self._task = CancellableTask()
         task = self._task
 
@@ -181,10 +212,11 @@ class ArchiveTab(ttk.Frame):
 
         def on_done(result, error) -> None:
             self._task_running = False
-            self.start_btn.config(state="normal")
-            self.cancel_btn.config(state="disabled")
+            self.start_btn.set_enabled(True)
+            self.cancel_btn.set_enabled(False)
             if error is not None:
                 self.status_var.set(f"Failed: {error}")
+                self._refresh_status_text()
                 messagebox.showerror("Squeeze", f"Compression failed:\n{error}")
                 return
             if mode == "bundle":
@@ -197,9 +229,10 @@ class ArchiveTab(ttk.Frame):
         self._poll_progress_label()
 
     def _poll_progress_label(self) -> None:
-        if not getattr(self, "_task_running", False):
+        if not self._task_running:
             return
         self.status_var.set(self._progress_text)
+        self._refresh_status_text()
         self.after(150, self._poll_progress_label)
 
     def _report_bundle_result(self, result, target: str) -> None:
@@ -209,11 +242,13 @@ class ArchiveTab(ttk.Frame):
             else:
                 self.status_var.set(f"Failed: {result.message}")
                 messagebox.showerror("Squeeze", f"Could not create archive:\n{result.message}")
+            self._refresh_status_text()
             return
         self.status_var.set(
             f"Created {target} — {human_size(result.output_size)} "
             f"(saved {result.saved_percent:.0f}% vs {human_size(result.input_size)})"
         )
+        self._refresh_status_text()
 
     def _report_gzip_result(self, batch, was_cancelled: bool) -> None:
         failures = [p for p, r in batch.results if not r.success]
@@ -227,6 +262,7 @@ class ArchiveTab(ttk.Frame):
         if was_cancelled:
             msg += "  (cancelled — partial results shown)"
         self.status_var.set(msg)
+        self._refresh_status_text()
 
     @staticmethod
     def _next_free_path(out_dir: str, stem: str, ext: str) -> str:
@@ -241,4 +277,4 @@ class ArchiveTab(ttk.Frame):
     def _cancel(self) -> None:
         if self._task is not None:
             self._task.cancel()
-            self.cancel_btn.config(state="disabled")
+            self.cancel_btn.set_enabled(False)

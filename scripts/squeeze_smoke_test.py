@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Headless smoke test for Squeeze: build the real Tk app, drive a video
 compression, a photo compression, and both archive modes through the
-actual widgets/threads. Run manually via:
+actual widgets/threads — including the real header pill-button click flow
+for tab switching, not a shortcut. Run manually via:
 
     xvfb-run -a python3 scripts/squeeze_smoke_test.py
 """
@@ -70,8 +71,20 @@ def main() -> int:
             archive_srcs.append(p)
 
         root = build_app()
-        notebook = root.nametowidget(root.winfo_children()[0])
-        video_tab, photo_tab, archive_tab = notebook.winfo_children()
+        pump(root, 0.3)
+        video_tab, photo_tab, archive_tab = root.tabs["video"], root.tabs["photos"], root.tabs["archive"]
+
+        # --- Tab switching: click the real header pill buttons (not a
+        # shortcut), proving HeaderBar -> show() -> container.tkraise()
+        # actually works end to end.
+        header = root.header
+        header._pill_buttons["photos"].command()
+        pump(root, 0.2)
+        assert header._active == "photos"
+        header._pill_buttons["video"].command()
+        pump(root, 0.2)
+        assert header._active == "video"
+        print("[nav]    header pill click -> tab switch: OK")
 
         # --- Video tab: exercise the HandBrake-derived Quality Preset picker
         # through the real combobox handler, not by setting fields directly,
@@ -91,6 +104,8 @@ def main() -> int:
         assert status == "Done", f"video compression failed: {video_tab.tree.set(video_src, 'progress')}"
 
         # --- Photo tab ---
+        header._pill_buttons["photos"].command()
+        pump(root, 0.2)
         photo_tab._add_paths([photo_src])
         photo_tab.quality_var.set(50)
         photo_tab._start()
@@ -100,9 +115,12 @@ def main() -> int:
         print(f"[photo]  status={status!r} saved={photo_tab.tree.set(photo_src, 'saved')!r}")
         assert status == "Done"
 
-        # --- Archive tab: bundle mode ---
+        # --- Archive tab: bundle mode (click the real mode pill button) ---
+        header._pill_buttons["archive"].command()
+        pump(root, 0.2)
         archive_tab._add_paths(list(archive_srcs))
-        archive_tab.mode_var.set("bundle")
+        archive_tab.bundle_btn.command()  # click "Bundle into one archive"
+        assert archive_tab.mode_var.get() == "bundle"
         archive_tab._start()
         wait_until(root, lambda: "Created" in archive_tab.status_var.get() or "Failed" in archive_tab.status_var.get(),
                    timeout=10, what="archive bundle to finish")
@@ -110,7 +128,8 @@ def main() -> int:
         assert "Created" in archive_tab.status_var.get()
 
         # --- Archive tab: gzip mode ---
-        archive_tab.mode_var.set("gzip")
+        archive_tab.gzip_btn.command()  # click "Compress each file (.gz)"
+        assert archive_tab.mode_var.get() == "gzip"
         archive_tab._start()
         wait_until(root, lambda: "Compressed" in archive_tab.status_var.get(),
                    timeout=10, what="archive gzip batch to finish")
