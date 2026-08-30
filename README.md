@@ -84,7 +84,7 @@ Requirements:
   plain one, or just run with your system Python directly instead of a
   venv. If you do need an isolated venv without system-site-packages,
   install the bindings via pip instead: `sudo apt install
-  libgirepository-2.0-dev libcairo2-dev pkg-config python3-dev &&
+  libgirepository1.0-dev libcairo2-dev pkg-config python3-dev &&
   pip install pygobject==3.48.2` (pin needed — newer PyGObject has a
   callback-signature incompatibility with pywebview's GTK backend).
 - **ffmpeg** on PATH, for the Video tab only — install via
