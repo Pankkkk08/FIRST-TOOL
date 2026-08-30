@@ -1,0 +1,339 @@
+:root {
+  --bg-base: #0d0f1a;
+  --accent: #8b7cf6;
+  --accent-hover: #a599f8;
+  --accent-press: #7566e0;
+  --success: #2dd4bf;
+  --danger: #f87171;
+  --danger-hover: #fb9a9a;
+  --text-primary: #f4f4f8;
+  --text-muted: #a6a6c2;
+  --text-faint: #7a7a97;
+  --surface: #1c1e30;
+  --surface-light: #262842;
+  --panel-tint: rgba(255, 255, 255, 0.08);
+  --panel-border: rgba(255, 255, 255, 0.16);
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+body {
+  /* The same "aurora" gradient the earlier Tkinter build had to fake by
+     hand with Pillow — here it's just CSS, and the panels below get
+     REAL live backdrop-filter blur instead of a pre-rendered image. */
+  background:
+    radial-gradient(circle at 12% 10%, #7c6cf6 0%, transparent 55%),
+    radial-gradient(circle at 85% 15%, #2dd4bf 0%, transparent 50%),
+    radial-gradient(circle at 50% 100%, #ec6ff0 0%, transparent 60%),
+    var(--bg-base);
+  display: flex;
+  flex-direction: column;
+}
+
+.glass {
+  background: var(--panel-tint);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius);
+}
+
+/* ---------------- header ---------------- */
+
+.topbar {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 64px;
+  flex: none;
+}
+
+.brand {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.tagline {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 10px;
+}
+
+.tabs { display: flex; gap: 10px; }
+
+.tab-pill {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 22px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.tab-pill:hover { background: rgba(255, 255, 255, 0.18); }
+.tab-pill:active { transform: scale(0.97); }
+.tab-pill.active { background: var(--accent); color: #151221; }
+.tab-pill.active:hover { background: var(--accent-hover); }
+
+/* ---------------- layout ---------------- */
+
+main {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tab-panel { display: none; flex-direction: column; gap: 16px; }
+.tab-panel.active { display: flex; }
+
+.panel { padding: 20px 24px; }
+
+.panel h2, .panel h3 {
+  margin: 0 0 14px 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.panel-header h2 { margin: 0; }
+
+/* ---------------- buttons ---------------- */
+
+.btn {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+.btn-primary { background: var(--accent); color: #151221; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-ghost { background: rgba(255, 255, 255, 0.1); color: var(--text-primary); }
+.btn-ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
+
+.btn-danger { background: var(--danger); color: #2a0f0f; }
+.btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+.btn-lg { padding: 11px 24px; font-size: 14px; }
+
+.btn-row { display: flex; gap: 8px; }
+
+/* ---------------- form rows ---------------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.row:last-of-type { margin-bottom: 0; }
+
+.row label {
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: fit-content;
+}
+
+.row select, .row input[type="text"], .row input[type="number"] {
+  background: var(--surface);
+  border: 1px solid var(--surface-light);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.row select:focus, .row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+#video-outdir, #photo-outdir, #archive-outdir { flex: 1; min-width: 200px; }
+input[type="number"] { width: 70px; }
+
+.hint { font-size: 12px; color: var(--text-muted); }
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.status-text { font-size: 12px; color: var(--text-muted); }
+
+.warning {
+  font-size: 12px;
+  color: var(--danger);
+  margin: 10px 0 0 0;
+}
+.warning:empty { display: none; }
+
+/* ---------------- toggle switch ---------------- */
+
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary) !important;
+}
+
+.toggle { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.toggle-track {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-light);
+  position: relative;
+  transition: background 0.15s ease;
+  flex: none;
+}
+.toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+.toggle:checked + .toggle-track { background: var(--accent); }
+.toggle:checked + .toggle-track::after { left: 21px; }
+
+/* ---------------- tables ---------------- */
+
+.table-wrap { max-height: 260px; overflow-y: auto; border-radius: 10px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-light);
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 9px 12px;
+  font-weight: 700;
+}
+
+tbody td {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+tbody tr.row-done td:nth-child(2) { color: var(--success); }
+tbody tr.row-failed td:nth-child(2),
+tbody tr.row-cancelled td:nth-child(2) { color: var(--danger); }
+
+tbody tr.selected { background: rgba(139, 124, 246, 0.25); }
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border-radius: 10px;
+  font-size: 13px;
+  min-height: 60px;
+}
+.plain-list li {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+.plain-list li:first-child { border-top: none; }
+.plain-list li.selected { background: rgba(139, 124, 246, 0.25); }
+
+.empty-hint {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 20px;
+  margin: 0;
+}
+.table-wrap:has(tbody tr) .empty-hint,
+.table-wrap:has(li) .empty-hint { display: none; }
+.table-wrap:has(tbody tr) table,
+.table-wrap:has(li) .plain-list { display: block; }
+table:not(:has(tr)) { display: none; }
+.plain-list:empty { display: none; }
+
+/* ---------------- range slider ---------------- */
+
+input[type="range"] {
+  accent-color: var(--accent);
+  width: 140px;
+}
+
+/* ---------------- pill group (archive mode) ---------------- */
+
+.pill-group { display: flex; gap: 8px; }
+
+.pill-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  transition: background 0.15s ease;
+}
+.pill-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.pill-btn.active { background: var(--accent); color: #151221; }
+
+/* ---------------- scrollbars ---------------- */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }

@@ -35,21 +35,16 @@ tabs overwrite your originals or an existing output file — outputs get a
 
 ### Design
 
-A real glassmorphism UI, not an imitation: a soft gradient wallpaper is
-rendered once, and each panel's background is that same wallpaper region
-actually Gaussian-blurred and tinted with Pillow, then drawn as a rounded
-glass card — genuine backdrop blur, just not a *live* one (stock Tkinter
-has no compositor hook for that; nothing behind these panels moves, so
-it isn't a visible difference). Buttons, toggle switches, and tab pills
-are custom-drawn to match instead of native OS chrome dropped onto a
-colorful background. See `squeeze/gui/glass.py` for the technique.
-
-The window is fixed-size (not resizable) — every tab is hand-laid-out on
-a canvas rather than a widget grid that reflows, and re-rendering
-blurred panel art on every live-resize frame isn't worth the cost for a
-compact utility window. If that ever needs to change, `GlassCanvas`
-would need a real build-once/layout-on-resize split (documented in its
-docstring) rather than redrawing from scratch each time.
+The UI is HTML/CSS/JS rendered by the OS's own webview — WebView2 on
+Windows, WebKit on macOS/Linux — driven by a small Python backend
+(`squeeze/webui/`), not a browser bundled into the app. This replaced an
+earlier Tkinter build whose glass panels were hand-drawn blurred
+*images*, redrawn in Python on every change: it worked, but felt choppy.
+The glass panels here get real, live, GPU-accelerated `backdrop-filter`
+blur from the browser engine itself — smoother, and dramatically less
+code (`squeeze/webui/static/style.css` vs. a custom Pillow-based
+rendering toolkit). See `squeeze/webui/api.py` for the Python↔JS bridge
+and `squeeze/webui/static/` for the frontend.
 
 ## Installing
 
@@ -69,10 +64,11 @@ python run_squeeze.py
 
 Requirements:
 - Python 3.9+
-- Tkinter — bundled with the standard python.org installers for
-  Windows/macOS; on Linux, install your distro's Tk package if it's
-  missing, e.g. `sudo apt install python3-tk` on Debian/Ubuntu
-- `pip install -r requirements.txt` covers `Pillow` (the Photos tab)
+- `pip install -r requirements.txt` covers `pywebview` (the UI shell) and
+  `Pillow` (the Photos tab)
+- A system webview — Windows and macOS already have one (WebView2 /
+  WebKit); on Linux, install `sudo apt install gir1.2-webkit2-4.1`
+  (Debian/Ubuntu) if it's not already present
 - **ffmpeg** on PATH, for the Video tab only — install via
   `sudo apt install ffmpeg`, `brew install ffmpeg`, or ffmpeg.org. The
   Photos and Files/Archives tabs work without it.
@@ -106,24 +102,37 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-All compression logic lives in `squeeze/core/` with **no Tkinter
+All compression logic lives in `squeeze/core/` with **no UI-framework
 import**, so it's fully unit-tested without a display — ffmpeg command
 building (including a real encode/probe/cancel round-trip and the
 built-in quality presets), Pillow resize/quality/format conversion, and
-zip/tar archive creation all have direct tests.
+zip/tar archive creation all have direct tests. `squeeze/webui/api.py`
+and `jobs.py` (the background-job runner) get the same treatment: real
+compression jobs driven directly, no browser needed.
 
-To smoke-test the actual GUI end-to-end (drives the real Tk widgets and
-background threads, requires a display or Xvfb):
+The frontend (`squeeze/webui/static/*`) has its own test layer using
+[Playwright](https://playwright.dev/) with a mocked `pywebview.api`,
+verifying the DOM wiring — tab switching, the Quality Preset picker
+filling in dependent fields, the exact options object Start sends —
+independently of the backend:
 
 ```bash
-xvfb-run -a python3 scripts/squeeze_smoke_test.py
+pytest tests/test_webui_frontend.py -v
+```
+
+And for the real end-to-end path — an actual webview, the actual
+JS↔Python bridge, an actual ffmpeg encode, not mocked — see
+`scripts/webview_smoke_test.py`:
+
+```bash
+xvfb-run -a python3 scripts/webview_smoke_test.py
 ```
 
 ## Project layout
 
 ```
 squeeze/
-  core/            # No Tkinter import — unit-tested directly
+  core/            # No UI-framework import — unit-tested directly
     ffmpeg_util.py    # find ffmpeg/ffprobe, probe duration/resolution
     video.py           # HandBrake-derived quality presets, ffmpeg
                         # command building, encode + progress parsing
@@ -131,17 +140,18 @@ squeeze/
     archive.py           # zip/tar.gz/tar.xz bundling + per-file gzip
     common.py            # shared CompressResult dataclass
     format.py             # human_size() etc.
-  gui/             # Tkinter widgets, one file per tab
-    glass.py            # the glassmorphism toolkit: wallpaper generation,
-                         # blurred/tinted panels, custom buttons/toggles,
-                         # ttk theming for the widgets that stay native
-    layout.py             # small label+field row-layout helper
-    workers.py             # CancellableTask: background-thread + queue
-                            # polling helper so a job never freezes the UI
-    batch.py                 # sequential background batch-job runner
-                              # (shared by the Video and Photo tabs)
-  app.py           # builds the main window, header/tab-switcher, wires
-                    # the tabs together
+  webui/           # the pywebview UI
+    api.py            # Python object exposed to JS as `pywebview.api` —
+                       # a thin adapter over squeeze/core/*
+    jobs.py             # generic background batch-job runner (video/
+                         # photo/archive-gzip all share it)
+    static/              # the actual frontend
+      index.html            # page structure, all three tabs
+      style.css              # the glass design system — real CSS
+                              # backdrop-filter blur, no Python rendering
+      app.js                  # DOM wiring + polling loop against
+                               # pywebview.api
+  webapp.py        # builds the pywebview window, wires up Api
 run_squeeze.py     # entry point
 ```
 

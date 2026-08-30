@@ -6,22 +6,30 @@ Build from the repo root with:  pyinstaller packaging/squeeze.spec
 executable for.) Output lands in dist/Squeeze (dist/Squeeze.exe on
 Windows, dist/Squeeze.app on macOS).
 
-This bundles the Python/Tk/Pillow side only — ffmpeg itself is NOT
-bundled (it's a large, license-bearing external binary), so the Video
-tab still needs a system ffmpeg install. See packaging/README.md.
+This bundles the Python/pywebview/Pillow side plus the webui/static/
+HTML+CSS+JS assets — ffmpeg itself is NOT bundled (it's a large,
+license-bearing external binary), so the Video tab still needs a system
+ffmpeg install. See packaging/README.md.
+
+The UI is rendered by the OS's own webview (WebView2 on Windows, WebKit
+on macOS/Linux) rather than bundled — pywebview talks to whatever's
+already on the system, so there's no browser engine to ship here either.
+Linux end users need the webkit2gtk system package installed (see
+packaging/README.md); Windows/macOS ship a webview by default.
 """
 
 import os
 import sys
 
 repo_root = os.path.abspath(os.path.join(SPECPATH, os.pardir))
+static_dir = os.path.join(repo_root, "squeeze", "webui", "static")
 
 a = Analysis(
     [os.path.join(repo_root, "run_squeeze.py")],
     pathex=[repo_root],
     binaries=[],
-    datas=[],
-    hiddenimports=["squeeze", "squeeze.core", "squeeze.gui", "PIL._tkinter_finder"],
+    datas=[(static_dir, os.path.join("squeeze", "webui", "static"))],
+    hiddenimports=["squeeze", "squeeze.core", "squeeze.webui"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

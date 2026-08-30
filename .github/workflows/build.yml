@@ -14,7 +14,41 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system webview backend, ffmpeg, Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 ffmpeg xvfb
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run test suite
+        run: pytest tests/ -v
+
+      # The real end-to-end path: a real webview, the real JS<->Python
+      # bridge, a real ffmpeg encode — see scripts/webview_smoke_test.py's
+      # own docstring for why the two env vars below are needed under
+      # Xvfb specifically (not needed on a real desktop).
+      - name: Run webview end-to-end smoke test
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a python3 scripts/webview_smoke_test.py
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -27,9 +61,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install system Tk + Xvfb (Linux only)
+      # The UI is rendered by the OS's own webview (pywebview) rather than
+      # bundled — Linux needs the GTK/WebKit2 system bindings for that;
+      # Windows/macOS ship a webview by default, nothing extra to install.
+      - name: Install system webview backend + Xvfb (Linux only)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb
 
       - name: Install Python dependencies
         run: |
@@ -43,8 +80,13 @@ jobs:
       # Prove the build actually launches, not just that PyInstaller
       # didn't error — a build with a missing hidden import can still
       # "succeed" and produce an executable that crashes immediately.
+      # The two WEBKIT_*/LIBGL_* env vars work around a WebKitGTK-under-
+      # Xvfb rendering quirk in headless CI — not needed on a real desktop.
       - name: Verify build launches (Linux)
         if: runner.os == 'Linux'
+        env:
+          WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze
 
       - name: Verify build launches (Windows)

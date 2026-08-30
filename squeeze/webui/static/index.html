@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Squeeze</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar glass">
+  <div class="brand">Squeeze <span class="tagline">video · photos · files</span></div>
+  <nav class="tabs">
+    <button class="tab-pill active" data-tab="video">Video</button>
+    <button class="tab-pill" data-tab="photos">Photos</button>
+    <button class="tab-pill" data-tab="archive">Files &amp; Archives</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ================= VIDEO ================= -->
+  <section id="tab-video" class="tab-panel active">
+    <div class="panel glass">
+      <div class="panel-header">
+        <h2>Queue</h2>
+        <div class="btn-row">
+          <button id="video-add-files" class="btn btn-primary">Add Files…</button>
+          <button id="video-add-folder" class="btn btn-ghost">Add Folder…</button>
+          <button id="video-remove" class="btn btn-ghost">Remove Selected</button>
+          <button id="video-clear" class="btn btn-ghost">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="video-table">
+          <thead><tr><th>File</th><th>Status</th><th>Progress</th><th>Saved</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+      </div>
+      <p id="video-warning" class="warning"></p>
+    </div>
+
+    <div class="panel glass">
+      <h3>Options</h3>
+      <div class="row">
+        <label>Quality preset</label>
+        <select id="video-preset"></select>
+        <span class="hint">fills in Codec/Quality/Speed/Profile below with HandBrake's own numbers — still editable after</span>
+      </div>
+      <div class="row">
+        <label>Codec</label><select id="video-codec"></select>
+        <label>Speed</label><select id="video-speed"></select>
+      </div>
+      <div class="row">
+        <label>Quality (CRF)</label><input type="number" id="video-crf" min="0" max="51" value="23">
+        <label>Profile</label><select id="video-profile"></select>
+        <label>Resolution</label>
+        <select id="video-resolution">
+          <option value="">Keep original</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Audio</label>
+        <select id="video-audio">
+          <option value="copy">Copy (no re-encode)</option>
+          <option value="aac_192">AAC 192 kbps</option>
+          <option value="aac_128">AAC 128 kbps</option>
+          <option value="aac_96">AAC 96 kbps</option>
+          <option value="none">Remove audio</option>
+        </select>
+        <label>Container</label>
+        <select id="video-container">
+          <option value="mp4">mp4</option>
+          <option value="mkv">mkv</option>
+          <option value="webm">webm</option>
+        </select>
+        <label class="toggle-label"><input type="checkbox" id="video-deinterlace" class="toggle"><span class="toggle-track"></span> Deinterlace (old/DVD)</label>
+      </div>
+      <div class="row">
+        <label>Output folder</label>
+        <input type="text" id="video-outdir" placeholder="blank = same folder as each source file">
+        <button id="video-browse" class="btn btn-ghost">Browse…</button>
+      </div>
+      <div class="action-row">
+        <button id="video-start" class="btn btn-primary btn-lg">Start Compressing</button>
+        <button id="video-cancel" class="btn btn-danger btn-lg" disabled>Cancel</button>
+        <span id="video-status" class="status-text"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PHOTOS ================= -->
+  <section id="tab-photos" class="tab-panel">
+    <div class="panel glass">
+      <div class="panel-header">
+        <h2>Queue</h2>
+        <div class="btn-row">
+          <button id="photo-add-files" class="btn btn-primary">Add Files…</button>
+          <button id="photo-add-folder" class="btn btn-ghost">Add Folder…</button>
+          <button id="photo-remove" class="btn btn-ghost">Remove Selected</button>
+          <button id="photo-clear" class="btn btn-ghost">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="photo-table">
+          <thead><tr><th>File</th><th>Status</th><th>Saved</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+      </div>
+    </div>
+
+    <div class="panel glass">
+      <h3>Options</h3>
+      <div class="row">
+        <label>Quality</label><input type="number" id="photo-quality" min="1" max="100" value="80">
+        <label>Resize</label>
+        <select id="photo-resize"></select>
+        <span class="hint">JPEG/WEBP only — PNG is always lossless</span>
+      </div>
+      <div class="row">
+        <label>Output format</label>
+        <select id="photo-format">
+          <option value="same">same</option>
+          <option value="JPEG">JPEG</option>
+          <option value="PNG">PNG</option>
+          <option value="WEBP">WEBP</option>
+        </select>
+        <label class="toggle-label"><input type="checkbox" id="photo-strip-meta" class="toggle" checked><span class="toggle-track"></span> Strip EXIF/metadata</label>
+      </div>
+      <div class="row">
+        <label>Output folder</label>
+        <input type="text" id="photo-outdir" placeholder="blank = same folder as each source file">
+        <button id="photo-browse" class="btn btn-ghost">Browse…</button>
+      </div>
+      <div class="action-row">
+        <button id="photo-start" class="btn btn-primary btn-lg">Start Compressing</button>
+        <button id="photo-cancel" class="btn btn-danger btn-lg" disabled>Cancel</button>
+        <span id="photo-status" class="status-text"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ARCHIVE ================= -->
+  <section id="tab-archive" class="tab-panel">
+    <div class="panel glass">
+      <div class="panel-header">
+        <h2>Files &amp; Folders</h2>
+        <div class="btn-row">
+          <button id="archive-add-files" class="btn btn-primary">Add Files…</button>
+          <button id="archive-add-folder" class="btn btn-ghost">Add Folder…</button>
+          <button id="archive-remove" class="btn btn-ghost">Remove Selected</button>
+          <button id="archive-clear" class="btn btn-ghost">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <ul id="archive-list" class="plain-list"></ul>
+        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+      </div>
+    </div>
+
+    <div class="panel glass">
+      <div class="row">
+        <label>Mode</label>
+        <div class="pill-group">
+          <button id="archive-mode-bundle" class="pill-btn active" data-mode="bundle">Bundle into one archive</button>
+          <button id="archive-mode-gzip" class="pill-btn" data-mode="gzip">Compress each file (.gz)</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Archive format</label>
+        <select id="archive-format"></select>
+        <label>Compression level</label>
+        <input type="range" id="archive-level" min="0" max="9" value="6">
+        <span id="archive-level-value" class="hint">6</span>
+        <span class="hint">0 = fastest, 9 = smallest</span>
+      </div>
+      <div class="row">
+        <label>Output folder</label>
+        <input type="text" id="archive-outdir" placeholder="blank = same folder as source (gzip mode only)">
+        <button id="archive-browse" class="btn btn-ghost">Browse…</button>
+      </div>
+      <div class="action-row">
+        <button id="archive-start" class="btn btn-primary btn-lg">Compress</button>
+        <button id="archive-cancel" class="btn btn-danger btn-lg" disabled>Cancel</button>
+        <span id="archive-status" class="status-text"></span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
