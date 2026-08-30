@@ -23,14 +23,26 @@ jobs:
         with:
           python-version: "3.11"
 
+      # actions/setup-python installs its own isolated interpreter, which
+      # can't see apt's python3-gi (that's built against the system
+      # Python) — so PyGObject needs building via pip against *this*
+      # interpreter instead, which needs these dev headers present.
       - name: Install system webview backend, ffmpeg, Xvfb
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 ffmpeg xvfb
+          sudo apt-get install -y gir1.2-webkit2-4.1 libgirepository-2.0-dev \
+            libcairo2-dev pkg-config python3-dev ffmpeg xvfb
 
+      # Pinned to match Ubuntu 24.04's apt python3-gi version — newer pip
+      # PyGObject (3.58+, latest as of writing) has a callback-signature
+      # incompatibility with pywebview's GTK backend (on_load_finish
+      # raises "TypeError: Must be number, not method" on every page
+      # load), found by actually launching and using the built app rather
+      # than trusting "PyInstaller/pip didn't error".
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install "pygobject==3.48.2"
           pip install -r requirements.txt -r requirements-dev.txt
           python -m playwright install --with-deps chromium
 
@@ -64,15 +76,23 @@ jobs:
       # The UI is rendered by the OS's own webview (pywebview) rather than
       # bundled — Linux needs the GTK/WebKit2 system bindings for that;
       # Windows/macOS ship a webview by default, nothing extra to install.
+      # PyGObject needs building via pip against actions/setup-python's
+      # own interpreter (see the `test` job above for why) so PyInstaller's
+      # import analysis can find and bundle it into the executable.
       - name: Install system webview backend + Xvfb (Linux only)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gir1.2-webkit2-4.1 libgirepository-2.0-dev \
+            libcairo2-dev pkg-config python3-dev xvfb
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          if [ "$RUNNER_OS" = "Linux" ]; then pip install "pygobject==3.48.2"; fi
           pip install -r requirements.txt -r requirements-dev.txt
           pip install pyinstaller
+        shell: bash
 
       - name: Build Squeeze
         run: pyinstaller packaging/squeeze.spec

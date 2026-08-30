@@ -39,7 +39,10 @@ runners and hands you all three.
 
 ## Building locally
 
-From the repo root, with a virtualenv activated:
+From the repo root, with a virtualenv activated (on Linux, see the main
+README's Installing section for why the venv needs
+`--system-site-packages`, or the pinned-`pygobject` pip alternative, to
+build at all):
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt

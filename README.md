@@ -57,8 +57,17 @@ comfortable you are with Python:
 ```bash
 git clone <this-repo-url>
 cd FIRST-TOOL
+
+# Windows/macOS:
 python3 -m venv .venv && source .venv/bin/activate   # optional but recommended
 pip install -r requirements.txt
+
+# Linux: use --system-site-packages so the venv can see apt's PyGObject
+# bindings — see the note below for why a plain venv doesn't work here.
+sudo apt install gir1.2-webkit2-4.1
+python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
 python run_squeeze.py
 ```
 
@@ -67,8 +76,17 @@ Requirements:
 - `pip install -r requirements.txt` covers `pywebview` (the UI shell) and
   `Pillow` (the Photos tab)
 - A system webview — Windows and macOS already have one (WebView2 /
-  WebKit); on Linux, install `sudo apt install gir1.2-webkit2-4.1`
-  (Debian/Ubuntu) if it's not already present
+  WebKit). **On Linux**, `pywebview` needs GTK+WebKit2 Python bindings
+  (`gi`), which don't come from pip in the usual way — install the
+  system package and give your venv access to it:
+  `sudo apt install gir1.2-webkit2-4.1` (Debian/Ubuntu), then create
+  your venv with `--system-site-packages` (as above) rather than a
+  plain one, or just run with your system Python directly instead of a
+  venv. If you do need an isolated venv without system-site-packages,
+  install the bindings via pip instead: `sudo apt install
+  libgirepository-2.0-dev libcairo2-dev pkg-config python3-dev &&
+  pip install pygobject==3.48.2` (pin needed — newer PyGObject has a
+  callback-signature incompatibility with pywebview's GTK backend).
 - **ffmpeg** on PATH, for the Video tab only — install via
   `sudo apt install ffmpeg`, `brew install ffmpeg`, or ffmpeg.org. The
   Photos and Files/Archives tabs work without it.
