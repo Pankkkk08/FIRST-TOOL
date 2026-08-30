@@ -73,15 +73,21 @@ def main() -> int:
         notebook = root.nametowidget(root.winfo_children()[0])
         video_tab, photo_tab, archive_tab = notebook.winfo_children()
 
-        # --- Video tab ---
+        # --- Video tab: exercise the HandBrake-derived Quality Preset picker
+        # through the real combobox handler, not by setting fields directly,
+        # so a real encode proves the preset -> codec/crf/speed/profile
+        # wiring (and the pix_fmt-for-profile fix) actually works end to end.
         video_tab._add_paths([video_src])
-        video_tab.crf_var.set(35)
-        video_tab.preset_var.set("ultrafast")
+        video_tab.quality_preset_var.set("Fast (H.264)")
+        video_tab._on_quality_preset_changed()
+        assert video_tab.crf_var.get() == 22, "preset should have set CRF to HandBrake's Fast(H.264) value"
+        assert video_tab.preset_var.get() == "fast"
+        assert video_tab.profile_var.get() == "main"
         video_tab._start()
         wait_until(root, lambda: video_tab.tree.set(video_src, "status") in ("Done", "Failed"),
                    timeout=20, what="video compression to finish")
         status = video_tab.tree.set(video_src, "status")
-        print(f"[video]  status={status!r} saved={video_tab.tree.set(video_src, 'saved')!r}")
+        print(f"[video]  quality-preset='Fast (H.264)' status={status!r} saved={video_tab.tree.set(video_src, 'saved')!r}")
         assert status == "Done", f"video compression failed: {video_tab.tree.set(video_src, 'progress')}"
 
         # --- Photo tab ---

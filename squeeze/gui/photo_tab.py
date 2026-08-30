@@ -6,7 +6,7 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from shared.format import human_size
+from squeeze.core.format import human_size
 from squeeze.core.photo import (
     IMAGE_EXTENSIONS,
     PhotoOptions,

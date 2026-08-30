@@ -1,11 +1,11 @@
-name: Build standalone executables
+name: Build standalone executable
 
-# Builds Sweep and Squeeze as standalone, no-Python-required executables
-# on real Windows/macOS/Linux runners (PyInstaller doesn't cross-compile,
-# so this is the only way to get all three from one CI run). Pushing a
-# `v*` tag also creates a GitHub Release and attaches every executable
-# to it; a manual run just uploads them as workflow artifacts so a build
-# can be checked before deciding to cut a release.
+# Builds Squeeze as a standalone, no-Python-required executable on real
+# Windows/macOS/Linux runners (PyInstaller doesn't cross-compile, so this
+# is the only way to get all three from one CI run). Pushing a `v*` tag
+# also creates a GitHub Release and attaches every executable to it; a
+# manual run just uploads them as workflow artifacts so a build can be
+# checked before deciding to cut a release.
 
 on:
   push:
@@ -37,59 +37,47 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
           pip install pyinstaller
 
-      - name: Build Sweep
-        run: pyinstaller packaging/sweep.spec
-
       - name: Build Squeeze
         run: pyinstaller packaging/squeeze.spec
 
-      # Prove each build actually launches, not just that PyInstaller
+      # Prove the build actually launches, not just that PyInstaller
       # didn't error — a build with a missing hidden import can still
       # "succeed" and produce an executable that crashes immediately.
-      - name: Verify builds launch (Linux)
+      - name: Verify build launches (Linux)
         if: runner.os == 'Linux'
-        run: |
-          xvfb-run -a python3 scripts/_pyinstaller_exe_smoke.py dist/Sweep
-          xvfb-run -a python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze
+        run: xvfb-run -a python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze
 
-      - name: Verify builds launch (Windows)
+      - name: Verify build launches (Windows)
         if: runner.os == 'Windows'
-        run: |
-          python scripts/_pyinstaller_exe_smoke.py dist/Sweep.exe
-          python scripts/_pyinstaller_exe_smoke.py dist/Squeeze.exe
+        run: python scripts/_pyinstaller_exe_smoke.py dist/Squeeze.exe
 
-      - name: Verify builds launch (macOS)
+      - name: Verify build launches (macOS)
         if: runner.os == 'macOS'
-        run: |
-          python3 scripts/_pyinstaller_exe_smoke.py dist/Sweep.app/Contents/MacOS/Sweep
-          python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze.app/Contents/MacOS/Squeeze
+        run: python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze.app/Contents/MacOS/Squeeze
 
-      - name: Package artifacts (Linux)
+      - name: Package artifact (Linux)
         if: runner.os == 'Linux'
         run: |
           mkdir -p out
-          tar -C dist -czf out/Sweep-linux-x86_64.tar.gz Sweep
           tar -C dist -czf out/Squeeze-linux-x86_64.tar.gz Squeeze
 
-      - name: Package artifacts (Windows)
+      - name: Package artifact (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           mkdir -p out
           cd dist
-          7z a ../out/Sweep-windows-x86_64.zip Sweep.exe
           7z a ../out/Squeeze-windows-x86_64.zip Squeeze.exe
 
-      - name: Package artifacts (macOS)
+      - name: Package artifact (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir -p out
-          ditto -c -k --sequesterRsrc --keepParent dist/Sweep.app out/Sweep-macos.zip
           ditto -c -k --sequesterRsrc --keepParent dist/Squeeze.app out/Squeeze-macos.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: executables-${{ matrix.os }}
+          name: executable-${{ matrix.os }}
           path: out/*
           if-no-files-found: error
 
@@ -105,7 +93,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create release and attach executables
+      - name: Create release and attach executable
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*

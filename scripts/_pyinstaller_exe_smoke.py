@@ -3,7 +3,7 @@
 and doesn't crash on startup. Not a pytest test (needs a display/Xvfb and
 a prebuilt exe) — used by packaging/README.md's verification steps.
 
-Usage: python3 scripts/_pyinstaller_exe_smoke.py dist/Sweep
+Usage: python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze
 """
 
 import subprocess

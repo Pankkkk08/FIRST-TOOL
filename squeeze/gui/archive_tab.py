@@ -10,8 +10,8 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from shared.format import human_size
-from shared.workers import CancellableTask
+from squeeze.core.format import human_size
+from squeeze.gui.workers import CancellableTask
 from squeeze.core.archive import (
     ARCHIVE_FORMATS,
     create_archive,
@@ -125,9 +125,9 @@ class ArchiveTab(ttk.Frame):
             self.output_dir_var.set(chosen)
 
     # -- compression --------------------------------------------------------
-    # Both modes run on a background thread via CancellableTask (same helper
-    # Sweep's tabs use) so a big batch never freezes the window and Cancel
-    # actually works. CancellableTask itself has no progress-callback slot,
+    # Both modes run on a background thread via CancellableTask so a big
+    # batch never freezes the window and Cancel actually works.
+    # CancellableTask itself has no progress-callback slot,
     # so `_progress_text` is written from the worker thread and read back by
     # a separate `.after()` poll loop — a plain string reference swap is
     # atomic under the GIL, so no lock is needed for this one-writer/

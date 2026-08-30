@@ -6,7 +6,7 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from shared.format import human_size
+from squeeze.core.format import human_size
 from squeeze.core.ffmpeg_util import (
     VIDEO_EXTENSIONS,
     find_ffmpeg,
@@ -16,6 +16,7 @@ from squeeze.core.ffmpeg_util import (
 )
 from squeeze.core.video import (
     DEFAULT_CRF,
+    QUALITY_PRESETS,
     VIDEO_CODECS,
     VideoOptions,
     compress_video,
@@ -43,6 +44,15 @@ CONTAINERS = ["mp4", "mkv", "webm"]
 
 PRESETS_X26X = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]
 PRESETS_AV1 = [str(i) for i in range(0, 14)]  # 0 = slowest/best .. 13 = fastest
+
+NO_PROFILE = "(default)"
+PROFILES_BY_CODEC = {
+    "libx264": [NO_PROFILE, "main", "high"],
+    "libx265": [NO_PROFILE, "main", "main10"],
+    "libsvtav1": [NO_PROFILE],
+}
+
+CUSTOM_PRESET = "Custom (set options below)"
 
 
 class VideoTab(ttk.Frame):
@@ -83,6 +93,26 @@ class VideoTab(ttk.Frame):
         options = ttk.LabelFrame(self, text="Options")
         options.pack(fill="x", padx=8, pady=6)
 
+        row0 = ttk.Frame(options)
+        row0.pack(fill="x", padx=6, pady=3)
+        ttk.Label(row0, text="Quality preset:").pack(side="left")
+        self.quality_preset_var = tk.StringVar(value=CUSTOM_PRESET)
+        preset_names = [CUSTOM_PRESET] + list(QUALITY_PRESETS.keys())
+        preset_picker = ttk.Combobox(
+            row0, textvariable=self.quality_preset_var, values=preset_names, state="readonly", width=24
+        )
+        preset_picker.pack(side="left", padx=4)
+        preset_picker.bind("<<ComboboxSelected>>", lambda e: self._on_quality_preset_changed())
+
+        row0b = ttk.Frame(options)
+        row0b.pack(fill="x", padx=6)
+        ttk.Label(
+            row0b,
+            text="(fills in Codec/Quality/Speed/Profile below with HandBrake's own"
+            " Fast/HQ/Super HQ numbers — still editable after)",
+            foreground="#666666",
+        ).pack(anchor="w")
+
         row1 = ttk.Frame(options)
         row1.pack(fill="x", padx=6, pady=3)
         ttk.Label(row1, text="Codec:").pack(side="left")
@@ -93,20 +123,27 @@ class VideoTab(ttk.Frame):
         codec_combo.pack(side="left", padx=(4, 16))
         codec_combo.bind("<<ComboboxSelected>>", lambda e: self._on_codec_changed())
 
-        ttk.Label(row1, text="Preset:").pack(side="left")
+        ttk.Label(row1, text="Speed:").pack(side="left")
         self.preset_var = tk.StringVar(value="medium")
         self.preset_combo = ttk.Combobox(
             row1, textvariable=self.preset_var, values=PRESETS_X26X, state="readonly", width=12
         )
         self.preset_combo.pack(side="left", padx=4)
 
-        # Split across two rows (rather than one long one) so nothing gets
-        # clipped off the right edge at the window's minimum width.
+        # Split across multiple rows (rather than one long one) so nothing
+        # gets clipped off the right edge at the window's minimum width.
         row2 = ttk.Frame(options)
         row2.pack(fill="x", padx=6, pady=3)
         ttk.Label(row2, text="Quality (CRF, lower = better):").pack(side="left")
         self.crf_var = tk.IntVar(value=DEFAULT_CRF["libx264"])
         ttk.Spinbox(row2, from_=0, to=51, textvariable=self.crf_var, width=6).pack(side="left", padx=4)
+
+        ttk.Label(row2, text="  Profile:").pack(side="left", padx=(16, 0))
+        self.profile_var = tk.StringVar(value=NO_PROFILE)
+        self.profile_combo = ttk.Combobox(
+            row2, textvariable=self.profile_var, values=PROFILES_BY_CODEC["libx264"], state="readonly", width=10
+        )
+        self.profile_combo.pack(side="left", padx=4)
 
         ttk.Label(row2, text="  Resolution:").pack(side="left", padx=(16, 0))
         self.resolution_var = tk.StringVar(value="Keep original")
@@ -127,6 +164,11 @@ class VideoTab(ttk.Frame):
         ttk.Combobox(row2b, textvariable=self.container_var, values=CONTAINERS, state="readonly", width=6).pack(
             side="left", padx=4
         )
+
+        self.deinterlace_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            row2b, text="Deinterlace (old/DVD sources)", variable=self.deinterlace_var
+        ).pack(side="left", padx=(16, 0))
 
         row3 = ttk.Frame(options)
         row3.pack(fill="x", padx=6, pady=3)
@@ -164,6 +206,24 @@ class VideoTab(ttk.Frame):
         self.crf_var.set(DEFAULT_CRF[codec])
         self.preset_var.set(default_preset_for_codec(codec))
         self.preset_combo.config(values=PRESETS_AV1 if codec == "libsvtav1" else PRESETS_X26X)
+        profiles = PROFILES_BY_CODEC[codec]
+        self.profile_combo.config(values=profiles)
+        if self.profile_var.get() not in profiles:
+            self.profile_var.set(NO_PROFILE)
+
+    def _on_quality_preset_changed(self) -> None:
+        name = self.quality_preset_var.get()
+        if name == CUSTOM_PRESET:
+            return
+        preset = QUALITY_PRESETS[name]
+        # Find the display label VIDEO_CODECS uses for this codec so the
+        # combobox shows the right entry, not the raw ffmpeg encoder name.
+        codec_label = next(k for k, v in VIDEO_CODECS.items() if v == preset.codec)
+        self.codec_var.set(codec_label)
+        self._on_codec_changed()  # refreshes speed/profile choices for the new codec
+        self.crf_var.set(preset.crf)
+        self.preset_var.set(preset.speed)
+        self.profile_var.set(preset.profile or NO_PROFILE)
 
     # -- queue management -------------------------------------------------
     def _add_files(self) -> None:
@@ -206,12 +266,15 @@ class VideoTab(ttk.Frame):
     # -- compression -------------------------------------------------------
     def _current_options(self) -> VideoOptions:
         codec = VIDEO_CODECS[self.codec_var.get()]
+        profile = self.profile_var.get()
         return VideoOptions(
             codec=codec,
             crf=self.crf_var.get(),
             preset=self.preset_var.get(),
+            profile=None if profile == NO_PROFILE else profile,
             target_height=RESOLUTIONS[self.resolution_var.get()],
             audio_mode=AUDIO_MODES[self.audio_var.get()],
+            deinterlace=self.deinterlace_var.get(),
         )
 
     def _output_path_for(self, input_path: str) -> str:

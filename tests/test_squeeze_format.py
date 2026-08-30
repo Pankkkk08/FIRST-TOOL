@@ -1,4 +1,4 @@
-from shared.format import human_size
+from squeeze.core.format import human_size
 
 
 def test_human_size_formatting():

@@ -42,13 +42,67 @@ def default_preset_for_codec(codec: str) -> str:
     return "medium"  # x264/x265 preset scale: ultrafast..veryslow
 
 
+@dataclass(frozen=True)
+class QualityPreset:
+    """One row of a named quality ladder: codec + CRF + encoder speed +
+    (optionally) an H.264/H.265 profile, bundled together like a HandBrake
+    preset — see QUALITY_PRESETS below for where the numbers come from.
+    """
+
+    codec: str
+    crf: int
+    speed: str  # x264/x265 -preset value, or SVT-AV1's numeric preset as a string
+    profile: Optional[str] = None
+
+
+# HandBrake ships a Fast/HQ/Super HQ quality ladder per codec as its own
+# built-in presets, tuned by its maintainers over many releases. Rather than
+# guess at "reasonable" CRF/speed/profile combinations, these are lifted
+# directly from HandBrake's own preset definitions —
+# https://github.com/HandBrake/HandBrake/blob/master/preset/preset_builtin.json
+# (x264: "Fast/HQ/Super HQ 1080p30"; x265: "Fast/HQ/Super HQ 2160p60 4K HEVC";
+# AV1: "Fast/HQ/Super HQ 2160p60 4K AV1", CRF rounded to the nearest int since
+# this app's CRF field is integer-only). "Custom" leaves whatever is already
+# selected below alone — picking a preset just seeds sensible starting values
+# that stay fully editable afterward, the same way HandBrake's own preset
+# picker works.
+QUALITY_PRESETS: dict[str, QualityPreset] = {
+    "Fast (H.264)": QualityPreset("libx264", 22, "fast", "main"),
+    "HQ (H.264)": QualityPreset("libx264", 20, "slow", "high"),
+    "Super HQ (H.264)": QualityPreset("libx264", 18, "veryslow", "high"),
+    "Fast (H.265/HEVC)": QualityPreset("libx265", 24, "faster", "main"),
+    "HQ (H.265/HEVC)": QualityPreset("libx265", 22, "medium", "main"),
+    "Super HQ (H.265/HEVC)": QualityPreset("libx265", 20, "slow", "main"),
+    "Fast (AV1)": QualityPreset("libsvtav1", 34, "6", None),
+    "HQ (AV1)": QualityPreset("libsvtav1", 30, "4", None),
+    "Super HQ (AV1)": QualityPreset("libsvtav1", 25, "3", None),
+}
+
+
 @dataclass
 class VideoOptions:
     codec: str = "libx264"
     crf: int = 23
     preset: str = "medium"
+    profile: Optional[str] = None  # e.g. "main"/"high" (x264/x265 only)
     target_height: Optional[int] = None  # None = keep source resolution
     audio_mode: str = "copy"  # "copy" | "none" | "aac_96" | "aac_128" | "aac_192"
+    deinterlace: bool = False  # yadif filter, for old interlaced sources
+
+
+# H.264/H.265 profiles each require a specific pixel format (main/high need
+# 4:2:0 8-bit, main10 needs 4:2:0 10-bit) — HandBrake normalizes color
+# format internally whenever a profile is selected. Without this, setting
+# -profile:v on a source ffmpeg would otherwise encode at a different chroma
+# subsampling (e.g. some screen recordings, or ffmpeg's own lavfi test
+# sources, default to 4:4:4) makes the encoder fail outright rather than
+# silently do the wrong thing.
+_PROFILE_PIX_FMT = {
+    ("libx264", "main"): "yuv420p",
+    ("libx264", "high"): "yuv420p",
+    ("libx265", "main"): "yuv420p",
+    ("libx265", "main10"): "yuv420p10le",
+}
 
 
 def build_ffmpeg_command(
@@ -57,10 +111,20 @@ def build_ffmpeg_command(
     cmd = [ffmpeg_bin, "-y", "-i", input_path]
 
     cmd += ["-c:v", opts.codec, "-crf", str(opts.crf), "-preset", opts.preset]
+    if opts.profile:
+        cmd += ["-profile:v", opts.profile]
+        pix_fmt = _PROFILE_PIX_FMT.get((opts.codec, opts.profile))
+        if pix_fmt:
+            cmd += ["-pix_fmt", pix_fmt]
 
+    vf_parts = []
+    if opts.deinterlace:
+        vf_parts.append("yadif")
     if opts.target_height:
         # -2 keeps width even and preserves aspect ratio automatically.
-        cmd += ["-vf", f"scale=-2:{opts.target_height}"]
+        vf_parts.append(f"scale=-2:{opts.target_height}")
+    if vf_parts:
+        cmd += ["-vf", ",".join(vf_parts)]
 
     if opts.audio_mode == "copy":
         cmd += ["-c:a", "copy"]

@@ -4,7 +4,7 @@ import shutil
 import pytest
 
 from squeeze.core.ffmpeg_util import find_ffmpeg, find_ffprobe, probe, is_video_file
-from squeeze.core.video import VideoOptions, build_ffmpeg_command, compress_video
+from squeeze.core.video import QUALITY_PRESETS, VideoOptions, build_ffmpeg_command, compress_video
 
 pytestmark = pytest.mark.skipif(
     find_ffmpeg() is None or find_ffprobe() is None, reason="ffmpeg/ffprobe not installed"
@@ -59,6 +59,72 @@ def test_build_ffmpeg_command_audio_modes():
     assert "-an" in none_cmd
 
 
+def test_build_ffmpeg_command_profile():
+    with_profile = build_ffmpeg_command(
+        "ffmpeg", "in.mp4", "out.mp4", VideoOptions(profile="high")
+    )
+    assert "-profile:v" in with_profile
+    assert with_profile[with_profile.index("-profile:v") + 1] == "high"
+
+    without_profile = build_ffmpeg_command("ffmpeg", "in.mp4", "out.mp4", VideoOptions(profile=None))
+    assert "-profile:v" not in without_profile
+
+
+def test_build_ffmpeg_command_profile_forces_compatible_pixel_format():
+    # main/high profiles require 4:2:0 chroma; without forcing -pix_fmt,
+    # a non-4:2:0 source (e.g. some screen recordings, or ffmpeg's own
+    # lavfi test sources) makes libx264/libx265 fail outright instead of
+    # just encoding at the requested profile.
+    cmd = build_ffmpeg_command("ffmpeg", "in.mp4", "out.mp4", VideoOptions(codec="libx264", profile="high"))
+    assert cmd[cmd.index("-pix_fmt") + 1] == "yuv420p"
+
+    cmd10 = build_ffmpeg_command(
+        "ffmpeg", "in.mp4", "out.mp4", VideoOptions(codec="libx265", profile="main10")
+    )
+    assert cmd10[cmd10.index("-pix_fmt") + 1] == "yuv420p10le"
+
+    cmd_none = build_ffmpeg_command("ffmpeg", "in.mp4", "out.mp4", VideoOptions(profile=None))
+    assert "-pix_fmt" not in cmd_none
+
+
+def test_build_ffmpeg_command_deinterlace():
+    cmd = build_ffmpeg_command(
+        "ffmpeg", "in.mp4", "out.mp4", VideoOptions(deinterlace=True, target_height=720)
+    )
+    vf = cmd[cmd.index("-vf") + 1]
+    # yadif must come before the scale filter in the same -vf chain.
+    assert vf == "yadif,scale=-2:720"
+
+    no_deinterlace_cmd = build_ffmpeg_command(
+        "ffmpeg", "in.mp4", "out.mp4", VideoOptions(deinterlace=False, target_height=720)
+    )
+    assert no_deinterlace_cmd[no_deinterlace_cmd.index("-vf") + 1] == "scale=-2:720"
+
+
+def test_quality_presets_are_internally_consistent():
+    # Every preset must build a valid ffmpeg command with no missing fields,
+    # and every codec they reference must be one this app actually offers.
+    from squeeze.core.video import VIDEO_CODECS
+
+    known_codecs = set(VIDEO_CODECS.values())
+    for name, preset in QUALITY_PRESETS.items():
+        assert preset.codec in known_codecs, f"{name} references unknown codec {preset.codec}"
+        assert 0 <= preset.crf <= 63, f"{name} has an out-of-range CRF: {preset.crf}"
+        opts = VideoOptions(codec=preset.codec, crf=preset.crf, preset=preset.speed, profile=preset.profile)
+        cmd = build_ffmpeg_command("ffmpeg", "in.mp4", "out.mp4", opts)
+        assert preset.codec in cmd
+        assert str(preset.crf) in cmd
+
+
+def test_quality_presets_cover_fast_hq_super_hq_tiers_per_codec():
+    tiers = {"Fast", "HQ", "Super HQ"}
+    codecs = {"H.264", "H.265/HEVC", "AV1"}
+    seen = {(name.split(" (")[0], name.split("(")[1].rstrip(")")) for name in QUALITY_PRESETS}
+    for tier in tiers:
+        for codec in codecs:
+            assert (tier, codec) in seen, f"missing {tier} preset for {codec}"
+
+
 def test_probe_and_compress_roundtrip(tmp_path):
     src = str(tmp_path / "source.mp4")
     _make_test_clip(src, duration=1.0)
@@ -86,6 +152,21 @@ def test_probe_and_compress_roundtrip(tmp_path):
     assert result.input_size == info.size_bytes
     # We should have received at least one real fraction update (not just speed pings).
     assert any(f >= 0 for f, _ in progress_updates)
+
+
+def test_compress_video_with_quality_preset_real_encode(tmp_path):
+    src = str(tmp_path / "source.mp4")
+    _make_test_clip(src, duration=1.0)
+    out = str(tmp_path / "compressed.mp4")
+
+    preset = QUALITY_PRESETS["Fast (H.264)"]
+    opts = VideoOptions(codec=preset.codec, crf=preset.crf, preset=preset.speed, profile=preset.profile)
+
+    result = compress_video(src, out, opts, duration_sec=1.0)
+
+    assert result.success, result.message
+    assert os.path.isfile(out)
+    assert result.output_size > 0
 
 
 def test_compress_video_missing_ffmpeg_reports_error(tmp_path, monkeypatch):
