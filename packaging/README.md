@@ -54,6 +54,26 @@ on macOS) — a single file (or `.app` bundle), copy it anywhere and run
 it. `build/` and `dist/` are scratch output, already in `.gitignore`;
 delete them freely and rebuild any time.
 
+### Windows: a real installer on top of the .exe
+
+`windows-installer.iss` wraps the built `dist\Squeeze.exe` in a normal
+Windows installer using [Inno Setup](https://jrsoftware.org/isinfo.php):
+
+```powershell
+pyinstaller packaging/squeeze.spec
+iscc packaging\windows-installer.iss     # -> dist\Squeeze-Setup.exe
+```
+
+Running `Squeeze-Setup.exe` installs Squeeze the way regular software
+installs: into the user's Programs folder (per-user, so **no admin/UAC
+prompt**), with a Start Menu entry, an optional desktop icon, and an
+uninstaller registered in Windows' "Installed apps" list. Re-running a
+newer installer upgrades in place (fixed `AppId`). The GitHub Actions
+workflow builds this automatically after every Windows build — Inno
+Setup is preinstalled on GitHub's `windows-latest` runners — and uploads
+it as the `Squeeze-Windows-Installer` artifact alongside the portable
+`.exe`.
+
 ### ffmpeg is not bundled
 
 The Video tab still needs `ffmpeg`/`ffprobe` on the end user's PATH —

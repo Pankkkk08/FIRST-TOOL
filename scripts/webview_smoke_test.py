@@ -137,6 +137,39 @@ def run(window: "webview.Window") -> None:
             print(f"[archive] {arc_status['overall']}")
             assert "Created" in arc_status["overall"], arc_status
 
+            # -- drag & drop: everything except the native drag itself ---------
+            # A real OS drag can't be synthesized under Xvfb, but everything
+            # downstream of it can be driven for real: the Python-side DOM
+            # drop registration (same as webapp.py does — checked via
+            # pywebview's own drop-listener count, which is what switches
+            # its native path resolution on), and the resolved-path handoff
+            # squeezeHandleDrop -> expand_dropped_paths -> video queue DOM.
+            from webview.dom import _dnd_state  # noqa: PLC0415
+
+            assert _dnd_state["num_listeners"] == 1, _dnd_state
+            print("[dnd]     Python drop handler registered on <body> (native DnD armed)")
+
+            # .then(() => true): pywebview's evaluate_js-with-callback can't
+            # deliver a Promise that resolves to undefined (its bridge
+            # message loses the params key and the callback never fires) —
+            # resolving to a real value sidesteps that. The app itself never
+            # hits this: api._on_drop calls squeezeHandleDrop without a
+            # callback.
+            call_js(window, f"window.squeezeHandleDrop({json.dumps([video_src])}).then(() => true)")
+            # Promise.resolve(): call_js only completes via the promise
+            # callback path, so a plain (non-promise) expression must be
+            # wrapped to reach it.
+            wait_until(
+                window,
+                "Promise.resolve(document.querySelectorAll('#video-table tbody tr').length === 1)",
+                timeout=5, what="dropped file to appear in the video queue",
+            )
+            dropped_row = window.evaluate_js(
+                "document.querySelector('#video-table tbody tr').dataset.path"
+            )
+            assert dropped_row == video_src, dropped_row
+            print("[dnd]     dropped path resolved via real bridge and queued in the DOM")
+
         print("\nSMOKE TEST PASSED")
         os._exit(0)
     except Exception:
@@ -153,6 +186,14 @@ def main() -> None:
         width=1080, height=780,
     )
     api.window = window
+
+    # Same drag-and-drop registration as squeeze/webapp.py — the smoke
+    # test must exercise it too, or a break here would only surface on a
+    # real desktop.
+    def register_drop_handler() -> None:
+        window.dom.get_element("body").events.drop += api._on_drop
+
+    window.events.loaded += register_drop_handler
     threading.Thread(target=run, args=(window,), daemon=True).start()
     webview.start(debug=False)
 

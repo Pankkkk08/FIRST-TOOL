@@ -51,6 +51,7 @@ window.pywebview = {
     pick_archive_files: () => Promise.resolve(["/tmp/doc1.txt", "/tmp/doc2.txt"]),
     pick_archive_folder: () => Promise.resolve([]),
     pick_output_folder: () => Promise.resolve("/tmp/out"),
+    expand_dropped_paths: (paths, kind) => { recordCall("expand_dropped_paths", [paths, kind]); return Promise.resolve(paths); },
     start_video_job: (items, options) => { recordCall("start_video_job", [items, options]); return Promise.resolve({ok: true}); },
     get_video_status: () => Promise.resolve({running: false, rows: [], overall: "Done."}),
     cancel_video_job: () => { recordCall("cancel_video_job", []); return Promise.resolve(); },
@@ -239,6 +240,42 @@ def test_empty_queue_start_shows_alert_not_api_call(page):
     assert dialog_messages == ["Add at least one video first."]
     calls = page.evaluate("window.__calls")
     assert not any(c["name"] == "start_video_job" for c in calls)
+
+
+def test_dropped_paths_go_to_active_tab(page):
+    # The real path resolution happens Python-side (browser JS never sees
+    # full paths) — the backend calls window.squeezeHandleDrop with them,
+    # so that's the entry point to drive here.
+    page.evaluate("window.squeezeHandleDrop(['/tmp/dropped1.mp4', '/tmp/dropped2.mp4'])")
+    page.wait_for_timeout(100)
+    rows = page.eval_on_selector_all("#video-table tbody tr", "els => els.map(e => e.dataset.path)")
+    assert rows == ["/tmp/dropped1.mp4", "/tmp/dropped2.mp4"]
+
+    calls = page.evaluate("window.__calls")
+    expand_calls = [c for c in calls if c["name"] == "expand_dropped_paths"]
+    assert expand_calls[-1]["args"] == [["/tmp/dropped1.mp4", "/tmp/dropped2.mp4"], "video"]
+
+
+def test_dropped_paths_respect_tab_switch(page):
+    page.click(".tab-pill[data-tab='photos']")
+    page.evaluate("window.squeezeHandleDrop(['/tmp/dropped.jpg'])")
+    page.wait_for_timeout(100)
+
+    calls = page.evaluate("window.__calls")
+    expand_calls = [c for c in calls if c["name"] == "expand_dropped_paths"]
+    assert expand_calls[-1]["args"] == [["/tmp/dropped.jpg"], "photo"]
+    rows = page.eval_on_selector_all("#photo-table tbody tr", "els => els.map(e => e.dataset.path)")
+    assert rows == ["/tmp/dropped.jpg"]
+    # ...and nothing leaked into the (inactive) video tab's queue.
+    assert page.eval_on_selector_all("#video-table tbody tr", "els => els.length") == 0
+
+
+def test_drag_overlay_shows_and_hides(page):
+    assert not page.eval_on_selector("#drop-overlay", "el => el.classList.contains('visible')")
+    page.evaluate("document.body.dispatchEvent(new DragEvent('dragenter', {bubbles: true}))")
+    assert page.eval_on_selector("#drop-overlay", "el => el.classList.contains('visible')")
+    page.evaluate("document.body.dispatchEvent(new DragEvent('drop', {bubbles: true}))")
+    assert not page.eval_on_selector("#drop-overlay", "el => el.classList.contains('visible')")
 
 
 def test_full_page_screenshot_smoke(page, tmp_path):

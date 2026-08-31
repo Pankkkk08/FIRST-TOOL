@@ -129,6 +129,29 @@ jobs:
         if: runner.os == 'macOS'
         run: python3 scripts/_pyinstaller_exe_smoke.py dist/Squeeze.app/Contents/MacOS/Squeeze
 
+      # Wrap the verified .exe in a real Windows installer (Start Menu
+      # shortcut, optional desktop icon, uninstaller in "Installed
+      # apps") — Inno Setup is preinstalled on GitHub's windows runners.
+      # Per-user install (PrivilegesRequired=lowest in the .iss), so it
+      # needs no admin rights. Uploaded as its own artifact alongside
+      # the portable .exe.
+      - name: Build Windows installer (Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          & $iscc packaging\windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows installer artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Squeeze-Windows-Installer
+          path: dist/Squeeze-Setup.exe
+          if-no-files-found: error
+
       # Upload the raw build output directly rather than pre-zipping it
       # ourselves — actions/upload-artifact always wraps whatever it's
       # given in one zip for download regardless, so pre-zipping here

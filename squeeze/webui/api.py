@@ -14,6 +14,7 @@ has no UI-framework dependency.
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 
@@ -148,6 +149,41 @@ class Api:
 
     def pick_output_folder(self) -> str:
         return self._pick_folder() or ""
+
+    # -- drag & drop -------------------------------------------------------
+    def expand_dropped_paths(self, paths: list[str], kind: str) -> list[str]:
+        """Turn raw dropped paths into what the given tab's queue accepts:
+        folders are walked (video/photo tabs) or kept whole (archive tab,
+        which archives folders as folders), and loose files are filtered
+        to the media types the tab can actually process.
+        """
+        matcher = {"video": is_video_file, "photo": is_image_file}.get(kind)
+        found: list[str] = []
+        for path in paths:
+            if os.path.isdir(path):
+                if matcher is None:
+                    found.append(path)
+                    continue
+                for dirpath, _dirnames, filenames in os.walk(path):
+                    for name in filenames:
+                        if matcher(name):
+                            found.append(os.path.join(dirpath, name))
+            elif os.path.isfile(path):
+                if matcher is None or matcher(path):
+                    found.append(path)
+        return found
+
+    def _on_drop(self, event: dict) -> None:
+        """DOM drop handler (registered in webapp.py via window.dom, not
+        exposed to JS). pywebview resolves each dropped file's real
+        filesystem path into `pywebviewFullPath` — the page's own JS never
+        sees full paths (browser security model), so this hands them back
+        to the frontend explicitly, which routes them to the active tab.
+        """
+        files = (event.get("dataTransfer") or {}).get("files") or []
+        paths = [f.get("pywebviewFullPath") for f in files if f.get("pywebviewFullPath")]
+        if paths and self.window is not None:
+            self.window.evaluate_js(f"window.squeezeHandleDrop({json.dumps(paths)})")
 
     # -- video ---------------------------------------------------------------
     def start_video_job(self, items: list[str], options: dict) -> dict:

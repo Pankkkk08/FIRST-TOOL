@@ -35,7 +35,7 @@
           <thead><tr><th>File</th><th>Status</th><th>Progress</th><th>Saved</th></tr></thead>
           <tbody></tbody>
         </table>
-        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+        <p class="empty-hint">No files yet — click Add Files / Add Folder, or just drag &amp; drop files onto this window.</p>
       </div>
       <p id="video-warning" class="warning"></p>
     </div>
@@ -110,7 +110,7 @@
           <thead><tr><th>File</th><th>Status</th><th>Saved</th></tr></thead>
           <tbody></tbody>
         </table>
-        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+        <p class="empty-hint">No files yet — click Add Files / Add Folder, or just drag &amp; drop files onto this window.</p>
       </div>
     </div>
 
@@ -159,7 +159,7 @@
       </div>
       <div class="table-wrap">
         <ul id="archive-list" class="plain-list"></ul>
-        <p class="empty-hint">No files yet — click Add Files or Add Folder to get started.</p>
+        <p class="empty-hint">No files yet — click Add Files / Add Folder, or just drag &amp; drop files onto this window.</p>
       </div>
     </div>
 
@@ -193,6 +193,14 @@
   </section>
 
 </main>
+
+<div id="drop-overlay" aria-hidden="true">
+  <div class="drop-overlay-card glass">
+    <div class="drop-overlay-icon">⬇</div>
+    <div class="drop-overlay-text">Drop files to add them</div>
+    <div class="drop-overlay-sub">They'll go to the tab you have open</div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

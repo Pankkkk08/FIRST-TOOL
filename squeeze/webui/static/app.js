@@ -171,6 +171,7 @@ function setupVideoTab() {
     const dir = await window.pywebview.api.pick_output_folder();
     if (dir) el("video-outdir").value = dir;
   });
+  dropAdders.video = (paths) => { queue.add(paths); render(); };
 
   const startBtn = el("video-start");
   const cancelBtn = el("video-cancel");
@@ -259,6 +260,7 @@ function setupPhotoTab() {
     const dir = await window.pywebview.api.pick_output_folder();
     if (dir) el("photo-outdir").value = dir;
   });
+  dropAdders.photos = (paths) => { queue.add(paths); render(); };
 
   const startBtn = el("photo-start");
   const cancelBtn = el("photo-cancel");
@@ -359,6 +361,7 @@ function setupArchiveTab() {
     const dir = await window.pywebview.api.pick_output_folder();
     if (dir) el("archive-outdir").value = dir;
   });
+  dropAdders.archive = (paths) => { queue.add(paths); render(); };
 
   const startBtn = el("archive-start");
   const cancelBtn = el("archive-cancel");
@@ -404,6 +407,50 @@ function setupArchiveTab() {
   }
 
   render();
+}
+
+// ---------------------------------------------------------------------
+// Drag & drop
+//
+// The full filesystem paths of dropped files are only visible to the
+// Python side (browser JS never gets real paths): the backend's DOM drop
+// handler (api._on_drop, registered in webapp.py) resolves them and
+// calls window.squeezeHandleDrop(paths) back into this page. This side
+// handles the visual overlay, stops the webview's default behavior of
+// *navigating* to a dropped file, and routes the resolved paths to
+// whichever tab is active.
+// ---------------------------------------------------------------------
+
+const dropAdders = {}; // tab name -> (paths) => void, filled by each setup*Tab()
+const TAB_TO_KIND = { video: "video", photos: "photo", archive: "archive" };
+
+window.squeezeHandleDrop = async (paths) => {
+  const pill = document.querySelector(".tab-pill.active");
+  const tab = pill ? pill.dataset.tab : "video";
+  const expanded = await window.pywebview.api.expand_dropped_paths(paths, TAB_TO_KIND[tab]);
+  if (expanded.length && dropAdders[tab]) dropAdders[tab](expanded);
+};
+
+{
+  const overlay = document.getElementById("drop-overlay");
+  // dragenter/dragleave fire for every child element crossed, so track
+  // depth rather than toggling on each event (the classic flicker fix).
+  let dragDepth = 0;
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragDepth += 1;
+    overlay.classList.add("visible");
+  });
+  document.addEventListener("dragleave", () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) overlay.classList.remove("visible");
+  });
+  document.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    overlay.classList.remove("visible");
+  });
 }
 
 // ---------------------------------------------------------------------

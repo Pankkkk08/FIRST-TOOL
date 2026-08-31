@@ -150,6 +150,68 @@ def test_archive_gzip_job_real_gzip(tmp_path):
     assert os.path.isfile(str(a) + ".gz")
 
 
+def test_expand_dropped_paths_filters_by_tab(tmp_path):
+    api = Api()
+    (tmp_path / "movie.mp4").write_bytes(b"v")
+    (tmp_path / "photo.jpg").write_bytes(b"p")
+    (tmp_path / "notes.txt").write_bytes(b"t")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "clip.mkv").write_bytes(b"v")
+    dropped = [str(tmp_path / "movie.mp4"), str(tmp_path / "photo.jpg"),
+               str(tmp_path / "notes.txt"), str(sub)]
+
+    videos = api.expand_dropped_paths(dropped, "video")
+    assert sorted(os.path.basename(p) for p in videos) == ["clip.mkv", "movie.mp4"]
+
+    photos = api.expand_dropped_paths(dropped, "photo")
+    assert [os.path.basename(p) for p in photos] == ["photo.jpg"]
+
+    # The archive tab takes anything, and keeps folders whole (they get
+    # archived as folders, not walked into loose files).
+    everything = api.expand_dropped_paths(dropped, "archive")
+    assert everything == dropped
+
+
+def test_expand_dropped_paths_ignores_nonexistent():
+    api = Api()
+    assert api.expand_dropped_paths(["/no/such/file.mp4"], "video") == []
+    assert api.expand_dropped_paths(["/no/such/file.mp4"], "archive") == []
+
+
+def test_on_drop_forwards_resolved_paths_to_frontend():
+    api = Api()
+
+    class FakeWindow:
+        def __init__(self):
+            self.scripts = []
+
+        def evaluate_js(self, script):
+            self.scripts.append(script)
+
+    api.window = FakeWindow()
+    # Shape matches what pywebview hands a DOM drop handler: the browser
+    # event serialized to a dict, with pywebviewFullPath added per file.
+    api._on_drop(
+        {
+            "dataTransfer": {
+                "files": [
+                    {"name": "a.mp4", "pywebviewFullPath": "/home/u/a.mp4"},
+                    {"name": "no-path.mp4"},  # unresolved file: skipped
+                ]
+            }
+        }
+    )
+    assert len(api.window.scripts) == 1
+    assert 'window.squeezeHandleDrop(["/home/u/a.mp4"])' == api.window.scripts[0]
+
+    # No resolvable paths at all -> no JS round-trip.
+    api.window.scripts.clear()
+    api._on_drop({"dataTransfer": {"files": [{"name": "x"}]}})
+    api._on_drop({})
+    assert api.window.scripts == []
+
+
 def test_unique_path_avoids_collisions(tmp_path):
     from squeeze.webui.api import _unique_path
 

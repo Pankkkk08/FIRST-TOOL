@@ -35,6 +35,16 @@ def main() -> None:
         background_color="#0d0f1a",
     )
     api.window = window
+
+    # Register the drag-and-drop handler on `loaded` — DOM element lookup
+    # needs the page to exist first. Registering a Python-side `drop`
+    # handler is also what switches on pywebview's native drag-and-drop
+    # path resolution (it counts drop listeners), so this line is what
+    # makes `pywebviewFullPath` appear on dropped files at all.
+    def register_drop_handler() -> None:
+        window.dom.get_element("body").events.drop += api._on_drop
+
+    window.events.loaded += register_drop_handler
     webview.start()
 
 

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from squeeze.core.common import CompressResult
-from squeeze.core.ffmpeg_util import find_ffmpeg
+from squeeze.core.ffmpeg_util import SUBPROCESS_CREATION_FLAGS, find_ffmpeg
 
 VIDEO_CODECS = {
     "H.264 (libx264) — widest compatibility": "libx264",
@@ -160,7 +160,12 @@ def compress_video(
 
     try:
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            creationflags=SUBPROCESS_CREATION_FLAGS,
         )
     except OSError as exc:
         return CompressResult(success=False, message=f"could not start ffmpeg: {exc}")

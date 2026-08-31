@@ -28,6 +28,11 @@ no accounts, no network calls, no telemetry.
   folder structure preserved) or gzip each file individually in place
   (`file.log` → `file.log.gz`), whichever shape of "smaller" you need.
 
+Files and folders can also be **dragged and dropped** straight onto the
+window from your file manager — they land in whichever tab is open
+(folders are searched for videos/photos automatically; the
+Files & Archives tab keeps them as folders).
+
 Every tab processes its batch on a background thread so the window
 never freezes, and every job can be cancelled mid-run. None of the three
 tabs overwrite your originals or an existing output file — outputs get a
@@ -106,6 +111,14 @@ This produces `dist/Squeeze` (`.exe` on Windows, a `.app` bundle on
 macOS) — copy that file anywhere and run it; nothing else needs to be
 installed alongside it (ffmpeg for the Video tab is still a separate
 system install — see `packaging/README.md`).
+
+On Windows there's additionally a real installer: after building the
+`.exe`, `iscc packaging\windows-installer.iss` (Inno Setup) produces
+`dist/Squeeze-Setup.exe`, which installs Squeeze like normal software —
+Start Menu entry, optional desktop icon, and an uninstaller in Windows'
+"Installed apps". No admin rights needed (it installs per-user). The
+GitHub Actions workflow builds this automatically alongside the portable
+`.exe`.
 
 If you push a `v*` git tag, `.github/workflows/build.yml` builds this
 for Windows/macOS/Linux automatically and attaches the executables to a

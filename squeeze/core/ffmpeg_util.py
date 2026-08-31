@@ -9,10 +9,19 @@ letting every video operation fail with a confusing traceback.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import Optional
+
+# Squeeze is a windowed app (PyInstaller console=False), so on Windows any
+# console subprocess it spawns (ffmpeg/ffprobe) gets a brand-new black
+# console window popped up over the UI unless CREATE_NO_WINDOW is passed.
+# 0 is a no-op everywhere else (and on Pythons where the constant is absent).
+SUBPROCESS_CREATION_FLAGS = (
+    getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+)
 
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp",
@@ -54,7 +63,13 @@ def probe(path: str, ffprobe_bin: Optional[str] = None) -> MediaInfo:
         "-show_format", "-show_streams", path,
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=SUBPROCESS_CREATION_FLAGS,
+        )
     except subprocess.TimeoutExpired as exc:
         raise ProbeError(f"ffprobe timed out on {path}") from exc
 
@@ -88,6 +103,4 @@ def probe(path: str, ffprobe_bin: Optional[str] = None) -> MediaInfo:
 
 
 def is_video_file(path: str) -> bool:
-    import os
-
     return os.path.splitext(path)[1].lower() in VIDEO_EXTENSIONS
