@@ -45,10 +45,15 @@ def main() -> None:
         window.dom.get_element("body").events.drop += api._on_drop
 
     window.events.loaded += register_drop_handler
-    # icon= sets the window/taskbar icon on GTK (Linux); Windows/macOS
-    # ignore it — there the icon is embedded into the exe/.app bundle at
-    # build time instead (see packaging/squeeze.spec).
-    webview.start(icon=os.path.join(_STATIC_DIR, "icon.png"))
+    # icon= sets the window/taskbar icon on Linux (GTK loads PNG fine).
+    # It must NOT be passed on Windows: pywebview's WinForms backend
+    # feeds the path to .NET's Icon(), which only accepts .ico files and
+    # throws on PNG — crashing the app at startup (caught by CI's
+    # Windows launch check). Windows doesn't need it anyway: the icon is
+    # embedded into Squeeze.exe at build time (packaging/squeeze.spec)
+    # and pywebview extracts it from the executable automatically, as
+    # macOS does from the .app bundle.
+    webview.start(icon=None if os.name == "nt" else os.path.join(_STATIC_DIR, "icon.png"))
 
 
 if __name__ == "__main__":
