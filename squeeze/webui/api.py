@@ -3,7 +3,7 @@
 Every method here is callable from JavaScript and returns something
 JSON-serializable (pywebview handles the marshalling). Long-running work
 (compression) runs on a background thread via `jobs.Runner`; the
-frontend polls `get_*_status()` every ~300ms rather than this pushing
+frontend polls `get_*_status()` every ~450ms rather than this pushing
 updates, which keeps the JS side simple (one polling loop) and avoids
 needing a second communication channel back into the page.
 
@@ -35,6 +35,7 @@ from squeeze.core.ffmpeg_util import (
     probe,
 )
 from squeeze.core.format import human_size
+from squeeze.core.hwaccel import detect_hw_encoders, select_hw_encoder
 from squeeze.core.photo import (
     IMAGE_EXTENSIONS,
     PhotoOptions,
@@ -83,11 +84,26 @@ class Api:
         self._photo_runner = Runner()
         self._archive_runner = Runner()
         self._archive_bundle_state = {"running": False, "overall": ""}
+        # Hardware-encoder state: detection runs once (in
+        # get_capabilities); _hw_failed remembers encoders that were
+        # listed by ffmpeg but failed at encode time (no/wrong GPU,
+        # broken driver) so only the first file of the session pays the
+        # failed attempt before falling back to software.
+        self._hw_encoders: set[str] | None = None
+        self._hw_failed: set[str] = set()
 
     # -- static info for the frontend to build its controls from -----------
     def get_capabilities(self) -> dict:
+        ffmpeg_available = bool(find_ffmpeg() and find_ffprobe())
+        if self._hw_encoders is None:
+            self._hw_encoders = detect_hw_encoders() if ffmpeg_available else set()
         return {
-            "ffmpeg_available": bool(find_ffmpeg() and find_ffprobe()),
+            "ffmpeg_available": ffmpeg_available,
+            "hw_encoders": sorted(self._hw_encoders),
+            "hw_available_for": {
+                codec: bool(select_hw_encoder(codec, self._hw_encoders))
+                for codec in ("libx264", "libx265")
+            },
             "video_codecs": VIDEO_CODECS,
             "quality_presets": {
                 name: {"codec": p.codec, "crf": p.crf, "speed": p.speed, "profile": p.profile}
@@ -150,6 +166,19 @@ class Api:
     def pick_output_folder(self) -> str:
         return self._pick_folder() or ""
 
+    def get_file_sizes(self, paths: list[str]) -> dict[str, int]:
+        """Byte size per path for the queue's Size column — 0 for
+        anything unreadable or for directories (the archive tab can queue
+        folders whole; walking them here isn't worth the wait).
+        """
+        sizes = {}
+        for path in paths:
+            try:
+                sizes[path] = os.path.getsize(path) if os.path.isfile(path) else 0
+            except OSError:
+                sizes[path] = 0
+        return sizes
+
     # -- drag & drop -------------------------------------------------------
     def expand_dropped_paths(self, paths: list[str], kind: str) -> list[str]:
         """Turn raw dropped paths into what the given tab's queue accepts:
@@ -202,6 +231,7 @@ class Api:
             deinterlace=bool(options.get("deinterlace")),
         )
         container = options.get("container", "mp4")
+        use_hw = bool(options.get("use_hw"))
         out_dir_override = (options.get("output_dir") or "").strip()
 
         out_paths = {}
@@ -221,6 +251,43 @@ class Api:
             item_opts = opts
             if opts.target_height and info.height and opts.target_height >= info.height:
                 item_opts = VideoOptions(**{**opts.__dict__, "target_height": None})
+
+            hw_encoder = None
+            if use_hw:
+                hw_encoder = select_hw_encoder(
+                    opts.codec, (self._hw_encoders or set()) - self._hw_failed
+                )
+            if hw_encoder:
+                # Profile pickers don't apply to hw encoders; hwaccel.py
+                # owns the whole quality/preset mapping.
+                hw_opts = VideoOptions(
+                    **{**item_opts.__dict__, "hw_encoder": hw_encoder, "profile": None}
+                )
+                result = compress_video(
+                    item, out_path, hw_opts, duration_sec=info.duration_sec,
+                    on_progress=report, should_stop=should_stop,
+                )
+                if result.success or result.message == "Cancelled":
+                    return result
+                # ffmpeg lists hw encoders even when the GPU/driver can't
+                # actually run them — that failure surfaces here, on the
+                # first attempted encode. Remember the broken encoder for
+                # the whole session and redo this file in software.
+                self._hw_failed.add(hw_encoder)
+                report(-2, "Graphics card failed — using software…")
+                result = compress_video(
+                    item, out_path, item_opts, duration_sec=info.duration_sec,
+                    on_progress=report, should_stop=should_stop,
+                )
+                if result.success:
+                    return CompressResult(
+                        success=True,
+                        message="Done (software fallback)",
+                        input_size=result.input_size,
+                        output_size=result.output_size,
+                    )
+                return result
+
             return compress_video(
                 item, out_path, item_opts, duration_sec=info.duration_sec,
                 on_progress=report, should_stop=should_stop,

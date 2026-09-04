@@ -22,7 +22,12 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from squeeze.core.common import CompressResult
-from squeeze.core.ffmpeg_util import SUBPROCESS_CREATION_FLAGS, find_ffmpeg
+from squeeze.core.ffmpeg_util import (
+    ENCODE_CREATION_FLAGS,
+    ENCODE_PREEXEC_FN,
+    find_ffmpeg,
+)
+from squeeze.core.hwaccel import hw_encode_args
 
 VIDEO_CODECS = {
     "H.264 (libx264) — widest compatibility": "libx264",
@@ -88,6 +93,11 @@ class VideoOptions:
     target_height: Optional[int] = None  # None = keep source resolution
     audio_mode: str = "copy"  # "copy" | "none" | "aac_96" | "aac_128" | "aac_192"
     deinterlace: bool = False  # yadif filter, for old interlaced sources
+    # Concrete hardware encoder name (e.g. "hevc_nvenc") chosen upstream
+    # by squeeze/core/hwaccel.py; None = software encode with `codec`.
+    # When set, it replaces codec/preset/profile and remaps crf — see
+    # hw_encode_args.
+    hw_encoder: Optional[str] = None
 
 
 # H.264/H.265 profiles each require a specific pixel format (main/high need
@@ -110,12 +120,20 @@ def build_ffmpeg_command(
 ) -> list[str]:
     cmd = [ffmpeg_bin, "-y", "-i", input_path]
 
-    cmd += ["-c:v", opts.codec, "-crf", str(opts.crf), "-preset", opts.preset]
-    if opts.profile:
-        cmd += ["-profile:v", opts.profile]
-        pix_fmt = _PROFILE_PIX_FMT.get((opts.codec, opts.profile))
-        if pix_fmt:
-            cmd += ["-pix_fmt", pix_fmt]
+    if opts.hw_encoder:
+        cmd += hw_encode_args(opts.hw_encoder, opts.crf)
+        ext = os.path.splitext(output_path)[1].lower()
+        if opts.hw_encoder.startswith("hevc") and ext == ".mp4":
+            # hvc1 (not ffmpeg's default hev1) is what QuickTime and
+            # Windows' built-in players expect for HEVC-in-mp4.
+            cmd += ["-tag:v", "hvc1"]
+    else:
+        cmd += ["-c:v", opts.codec, "-crf", str(opts.crf), "-preset", opts.preset]
+        if opts.profile:
+            cmd += ["-profile:v", opts.profile]
+            pix_fmt = _PROFILE_PIX_FMT.get((opts.codec, opts.profile))
+            if pix_fmt:
+                cmd += ["-pix_fmt", pix_fmt]
 
     vf_parts = []
     if opts.deinterlace:
@@ -165,7 +183,8 @@ def compress_video(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            creationflags=SUBPROCESS_CREATION_FLAGS,
+            creationflags=ENCODE_CREATION_FLAGS,
+            preexec_fn=ENCODE_PREEXEC_FN,
         )
     except OSError as exc:
         return CompressResult(success=False, message=f"could not start ffmpeg: {exc}")

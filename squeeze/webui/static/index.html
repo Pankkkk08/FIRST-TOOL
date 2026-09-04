@@ -32,7 +32,7 @@
       </div>
       <div class="table-wrap">
         <table id="video-table">
-          <thead><tr><th>File</th><th>Status</th><th>Progress</th><th>Saved</th></tr></thead>
+          <thead><tr><th>File</th><th>Size</th><th>Status</th><th>Progress</th><th>Saved</th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="empty-hint">No files yet — click Add Files / Add Folder, or just drag &amp; drop files onto this window.</p>
@@ -81,6 +81,9 @@
         <label class="toggle-label"><input type="checkbox" id="video-deinterlace" class="toggle"><span class="toggle-track"></span> Deinterlace (old/DVD)</label>
       </div>
       <div class="row">
+        <label class="toggle-label" id="video-hw-label" hidden><input type="checkbox" id="video-hw" class="toggle" checked><span class="toggle-track"></span> Use graphics card acceleration (much faster)</label>
+      </div>
+      <div class="row">
         <label>Output folder</label>
         <input type="text" id="video-outdir" placeholder="blank = same folder as each source file">
         <button id="video-browse" class="btn btn-ghost">Browse…</button>
@@ -107,7 +110,7 @@
       </div>
       <div class="table-wrap">
         <table id="photo-table">
-          <thead><tr><th>File</th><th>Status</th><th>Saved</th></tr></thead>
+          <thead><tr><th>File</th><th>Size</th><th>Status</th><th>Saved</th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="empty-hint">No files yet — click Add Files / Add Folder, or just drag &amp; drop files onto this window.</p>

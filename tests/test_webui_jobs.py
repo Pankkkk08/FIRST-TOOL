@@ -32,9 +32,40 @@ def test_runner_processes_items_in_order_and_reports_success():
     snap = _wait_until_done(runner)
 
     assert processed == ["/a", "/b", "/c"]
-    assert snap["overall"] == "Done."
+    # 3 × (1000 → 400 bytes) rolls up into a Caesium-style batch total.
+    assert snap["overall"] == "Done — 2.9 KB → 1.2 KB (saved 60%)"
     assert [r["status"] for r in snap["rows"]] == ["Done", "Done", "Done"]
     assert all(r["saved"] for r in snap["rows"])
+
+
+def test_runner_shows_rich_done_status_from_result_message():
+    # A success message starting with "Done" (e.g. the hardware->software
+    # fallback note) becomes the row status; a plain "OK" stays "Done".
+    runner = Runner()
+
+    def job_fn(item, should_stop, report):
+        if item == "/fellback":
+            return _fake_result(success=True, message="Done (software fallback)")
+        return _fake_result(success=True, message="OK")
+
+    runner.start(["/fellback", "/normal"], key_fn=lambda p: p, job_fn=job_fn)
+    snap = _wait_until_done(runner)
+
+    by_key = {r["key"]: r for r in snap["rows"]}
+    assert by_key["/fellback"]["status"] == "Done (software fallback)"
+    assert by_key["/normal"]["status"] == "Done"
+
+
+def test_runner_overall_plain_done_when_nothing_succeeded():
+    runner = Runner()
+
+    def job_fn(item, should_stop, report):
+        return _fake_result(success=False, message="boom")
+
+    runner.start(["/x", "/y"], key_fn=lambda p: p, job_fn=job_fn)
+    snap = _wait_until_done(runner)
+
+    assert snap["overall"] == "Done."
 
 
 def test_runner_marks_failed_items_without_stopping_the_batch():

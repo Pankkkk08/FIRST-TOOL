@@ -52,6 +52,8 @@ class Runner:
         self._state = {"running": True, "rows": rows, "overall": f"Processing {len(items)} file(s)…"}
 
         def worker() -> None:
+            total_in = 0
+            total_out = 0
             for item in items:
                 if self.should_stop():
                     break
@@ -79,12 +81,29 @@ class Runner:
                     row["status"] = "Cancelled" if result.message == "Cancelled" else "Failed"
                     row["progress"] = "" if result.message == "Cancelled" else result.message[:160]
                 else:
-                    row["status"] = "Done"
+                    # A success message starting with "Done" is a richer
+                    # status the job wants shown (e.g. "Done (software
+                    # fallback)" when the hw encoder didn't work out).
+                    message = getattr(result, "message", "")
+                    row["status"] = message if message.startswith("Done") else "Done"
                     row["progress"] = "100%"
                     row["saved"] = f"{human_size(result.saved_bytes)} ({result.saved_percent:.0f}%)"
+                    total_in += result.input_size
+                    total_out += result.output_size
 
             self._state["running"] = False
-            self._state["overall"] = "Cancelled." if self.should_stop() else "Done."
+            if self.should_stop():
+                self._state["overall"] = "Cancelled."
+            elif total_in > 0:
+                # Batch total, the way Caesium/HandBrake surface it —
+                # only successful files count toward it.
+                saved_pct = 100 * (total_in - total_out) / total_in
+                self._state["overall"] = (
+                    f"Done — {human_size(total_in)} → {human_size(total_out)} "
+                    f"(saved {saved_pct:.0f}%)"
+                )
+            else:
+                self._state["overall"] = "Done."
 
         self._thread = threading.Thread(target=worker, daemon=True)
         self._thread.start()

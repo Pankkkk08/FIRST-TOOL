@@ -28,6 +28,23 @@ def test_creation_flags_are_noop_off_windows():
         assert ffmpeg_util.SUBPROCESS_CREATION_FLAGS == 0
 
 
+def test_encode_flags_add_below_normal_priority():
+    """Encodes (and only encodes) run at below-normal priority — the
+    HandBrake-style fix for the UI going "(Not responding)" while ffmpeg
+    saturates every core.
+    """
+    if os.name == "nt":
+        import subprocess
+
+        assert ffmpeg_util.ENCODE_CREATION_FLAGS == (
+            subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        )
+        assert ffmpeg_util.ENCODE_PREEXEC_FN is None
+    else:
+        assert ffmpeg_util.ENCODE_CREATION_FLAGS == 0
+        assert ffmpeg_util.ENCODE_PREEXEC_FN is ffmpeg_util._nice_preexec
+
+
 def test_probe_passes_creationflags(monkeypatch):
     captured = {}
 
@@ -82,4 +99,5 @@ def test_compress_video_passes_creationflags(monkeypatch, tmp_path):
     result = video.compress_video(str(src), str(out), VideoOptions(), ffmpeg_bin="ffmpeg")
 
     assert result.success
-    assert captured["creationflags"] == ffmpeg_util.SUBPROCESS_CREATION_FLAGS
+    assert captured["creationflags"] == ffmpeg_util.ENCODE_CREATION_FLAGS
+    assert captured["preexec_fn"] is ffmpeg_util.ENCODE_PREEXEC_FN

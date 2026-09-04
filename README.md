@@ -19,6 +19,17 @@ no accounts, no network calls, no telemetry.
   output container. Live per-file progress and encode speed, read
   straight from ffmpeg's own `-progress` output. Never upscales — if you
   ask for 1080p on a 720p source, it just keeps 720p.
+  **Hardware acceleration**: when your ffmpeg build offers a GPU encoder
+  for the chosen codec (NVIDIA NVENC, Intel QSV, AMD AMF, Apple
+  VideoToolbox), a "Use graphics card acceleration" toggle appears —
+  typically 5-15× faster, and it keeps the CPU free. If the listed
+  encoder turns out not to work on the actual hardware (common: ffmpeg
+  builds list encoders the machine can't run), the file is automatically
+  re-encoded in software and its row says "Done (software fallback)" —
+  nothing fails. Quality mapping is anchored to HandBrake's own hardware
+  preset numbers. Encodes also run at below-normal CPU priority (the
+  same default HandBrake uses) so the app and the rest of the system
+  stay responsive while all cores are busy.
 - **Photos** (needs Pillow) — batch queue of images; quality slider,
   max-dimension resize (never upscales), format conversion
   (JPEG/PNG/WEBP), EXIF/metadata stripping. Applies EXIF orientation
@@ -34,7 +45,9 @@ window from your file manager — they land in whichever tab is open
 Files & Archives tab keeps them as folders).
 
 Every tab processes its batch on a background thread so the window
-never freezes, and every job can be cancelled mid-run. None of the three
+never freezes, and every job can be cancelled mid-run. Queued files show
+their size, and a finished batch reports its total ("Done — 2.1 GB →
+800 MB (saved 62%)"). None of the three
 tabs overwrite your originals or an existing output file — outputs get a
 `_compressed` suffix (or `_2`, `_3`, ... if that's already taken).
 
@@ -200,9 +213,6 @@ HandBrake's code.
 
 ## Roadmap ideas (not implemented yet)
 
-- Hardware-accelerated encoding (VideoToolbox/NVENC/QSV) for much faster
-  video compression on supported hardware — left out because it needs
-  per-platform detection and graceful fallback to get right.
 - A "target file size" mode for video (two-pass encoding to hit an exact
   MB target, the way HandBrake's own "Social" presets work) instead of
   only quality-based CRF.

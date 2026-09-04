@@ -269,9 +269,10 @@ tbody td {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-tbody tr.row-done td:nth-child(2) { color: var(--success); }
-tbody tr.row-failed td:nth-child(2),
-tbody tr.row-cancelled td:nth-child(2) { color: var(--danger); }
+tbody tr.row-done td.c-status { color: var(--success); }
+tbody tr.row-failed td.c-status,
+tbody tr.row-cancelled td.c-status { color: var(--danger); }
+td.c-size { color: var(--text-muted); white-space: nowrap; }
 
 tbody tr.selected { background: rgba(139, 124, 246, 0.25); }
 

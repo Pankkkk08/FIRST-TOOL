@@ -42,7 +42,9 @@ window.pywebview = {
         "Fast (AV1)": {codec: "libsvtav1", crf: 34, speed: "6", profile: null}
       },
       max_dimension_choices: ["Keep original size", "Max 1920px (Full HD)"],
-      archive_formats: ["ZIP (.zip)", "Tar + gzip (.tar.gz)"]
+      archive_formats: ["ZIP (.zip)", "Tar + gzip (.tar.gz)"],
+      hw_encoders: ["h264_nvenc", "hevc_nvenc"],
+      hw_available_for: {libx264: true, libx265: true}
     }),
     pick_video_files: () => { recordCall("pick_video_files", []); return Promise.resolve(["/tmp/movie1.mp4", "/tmp/movie2.mov"]); },
     pick_video_folder: () => Promise.resolve([]),
@@ -52,6 +54,7 @@ window.pywebview = {
     pick_archive_folder: () => Promise.resolve([]),
     pick_output_folder: () => Promise.resolve("/tmp/out"),
     expand_dropped_paths: (paths, kind) => { recordCall("expand_dropped_paths", [paths, kind]); return Promise.resolve(paths); },
+    get_file_sizes: (paths) => { recordCall("get_file_sizes", [paths]); return Promise.resolve(Object.fromEntries(paths.map(p => [p, 1048576]))); },
     start_video_job: (items, options) => { recordCall("start_video_job", [items, options]); return Promise.resolve({ok: true}); },
     get_video_status: () => Promise.resolve({running: false, rows: [], overall: "Done."}),
     cancel_video_job: () => { recordCall("cancel_video_job", []); return Promise.resolve(); },
@@ -155,6 +158,31 @@ def test_add_files_populates_table(page):
     assert first_row_name == "movie1.mp4"
 
 
+def test_hw_toggle_visible_and_default_on(page):
+    assert not page.eval_on_selector("#video-hw-label", "el => el.hidden")
+    assert page.eval_on_selector("#video-hw", "el => el.checked")
+
+
+def test_hw_toggle_hides_for_av1(page):
+    page.select_option("#video-preset", "Fast (AV1)")
+    assert page.eval_on_selector("#video-hw-label", "el => el.hidden")
+    # ...and comes back when returning to an hw-capable codec.
+    page.select_option("#video-preset", "HQ (H.264)")
+    assert not page.eval_on_selector("#video-hw-label", "el => el.hidden")
+
+
+def test_queue_rows_show_file_size(page):
+    page.click("#video-add-files")
+    page.wait_for_timeout(150)
+    size_cells = page.eval_on_selector_all(
+        "#video-table tbody tr td.c-size", "els => els.map(e => e.textContent)"
+    )
+    assert size_cells == ["1.0 MB", "1.0 MB"]
+    # Name stays the first cell — the Size column must not displace it.
+    first_cell = page.eval_on_selector("#video-table tbody tr td", "el => el.textContent")
+    assert first_cell == "movie1.mp4"
+
+
 def test_start_compressing_sends_correctly_shaped_options(page):
     page.click("#video-add-files")
     page.wait_for_timeout(100)
@@ -181,6 +209,7 @@ def test_start_compressing_sends_correctly_shaped_options(page):
     assert options["preset"] == "slow"
     assert options["profile"] == "high"
     assert options["deinterlace"] is True
+    assert options["use_hw"] is True  # toggle visible (mock offers nvenc) and default-on
     assert options["output_dir"] == "/tmp/my-output"
 
 
@@ -240,6 +269,35 @@ def test_empty_queue_start_shows_alert_not_api_call(page):
     assert dialog_messages == ["Add at least one video first."]
     calls = page.evaluate("window.__calls")
     assert not any(c["name"] == "start_video_job" for c in calls)
+
+
+def test_polling_does_not_stack_when_status_is_slow(page):
+    # Each status poll costs the backend an OS thread + a blocking marshal
+    # onto the UI thread, so a slow response must cause skipped ticks, not
+    # a growing pile of concurrent in-flight calls (which would amplify
+    # exactly the UI stall it's reporting on).
+    page.evaluate("""() => {
+      window.__inFlight = 0;
+      window.__maxInFlight = 0;
+      window.__slowRunning = true;
+      window.pywebview.api.get_video_status = () => new Promise((resolve) => {
+        window.__inFlight++;
+        window.__maxInFlight = Math.max(window.__maxInFlight, window.__inFlight);
+        setTimeout(() => {
+          window.__inFlight--;
+          resolve({running: window.__slowRunning, rows: [], overall: "working"});
+        }, 1200);
+      });
+    }""")
+    page.click("#video-add-files")
+    page.wait_for_timeout(100)
+    page.click("#video-start")
+    page.wait_for_timeout(2000)
+    assert page.evaluate("window.__maxInFlight") == 1
+    # Let the loop see running: false so the interval clears before the
+    # fixture's console-error teardown check.
+    page.evaluate("window.__slowRunning = false")
+    page.wait_for_timeout(2000)
 
 
 def test_dropped_paths_go_to_active_tab(page):

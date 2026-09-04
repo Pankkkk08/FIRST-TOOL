@@ -87,6 +87,35 @@ def test_build_ffmpeg_command_profile_forces_compatible_pixel_format():
     assert "-pix_fmt" not in cmd_none
 
 
+def test_build_ffmpeg_command_hardware_encoder():
+    # hw_encoder replaces the whole software codec/crf/preset/profile
+    # block with the encoder family's own quality knobs; the shared tail
+    # (filters, audio, container flags, progress) stays identical.
+    opts = VideoOptions(
+        codec="libx265", crf=26, preset="medium", profile="main",
+        target_height=720, audio_mode="aac_128", hw_encoder="hevc_nvenc",
+    )
+    cmd = build_ffmpeg_command("ffmpeg", "in.mov", "out.mp4", opts)
+
+    assert cmd[cmd.index("-c:v") + 1] == "hevc_nvenc"
+    assert "-cq" in cmd
+    assert "-crf" not in cmd
+    assert "-profile:v" not in cmd
+    assert cmd[cmd.index("-pix_fmt") + 1] == "yuv420p"
+    assert cmd[cmd.index("-tag:v") + 1] == "hvc1"  # hevc in .mp4
+    assert "scale=-2:720" in cmd
+    assert "aac" in cmd and "128k" in cmd
+    assert "+faststart" in cmd
+    assert "-progress" in cmd
+
+    # h264 / non-mp4 output: no hvc1 tag.
+    mkv_cmd = build_ffmpeg_command(
+        "ffmpeg", "in.mov", "out.mkv",
+        VideoOptions(codec="libx264", hw_encoder="h264_nvenc"),
+    )
+    assert "-tag:v" not in mkv_cmd
+
+
 def test_build_ffmpeg_command_deinterlace():
     cmd = build_ffmpeg_command(
         "ffmpeg", "in.mp4", "out.mp4", VideoOptions(deinterlace=True, target_height=720)

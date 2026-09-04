@@ -83,6 +83,7 @@ def run(window: "webview.Window") -> None:
             caps = call_js(window, "window.pywebview.api.get_capabilities()")
             assert "quality_presets" in caps, caps
             assert caps["quality_presets"]["Fast (H.264)"]["crf"] == 22
+            assert isinstance(caps["hw_encoders"], list), caps  # hw detection marshals JSON-safe
             print("[bridge]  get_capabilities() OK via real js_api bridge")
 
             # -- drive the real DOM: pick a preset through the actual <select> --

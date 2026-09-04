@@ -1,7 +1,11 @@
 /* Squeeze frontend. Talks to the Python backend via `pywebview.api.*`
- * (each call returns a Promise). Progress is polled every 300ms rather
+ * (each call returns a Promise). Progress is polled every ~450ms rather
  * than pushed — keeps this side to one loop instead of a second
- * communication channel back into the page. When running outside a real
+ * communication channel back into the page. Every poll loop carries a
+ * reentrancy guard: each bridge call costs an OS thread plus a blocking
+ * marshal onto the UI thread on the Python side, so ticks must never
+ * stack up behind a slow response (that pile-up amplifies exactly the
+ * UI stall it's reporting on). When running outside a real
  * pywebview window (e.g. this file opened directly for testing), a
  * small mock API is installed instead — see bottom of file.
  */
@@ -40,6 +44,18 @@ function basename(path) {
   return path.split(/[\\/]/).pop();
 }
 
+// JS twin of squeeze/core/format.py's human_size(), same units and
+// rounding so queue-row sizes match the backend's totals line.
+function humanSize(bytes) {
+  let size = bytes;
+  for (const unit of ["B", "KB", "MB", "GB", "TB", "PB"]) {
+    if (size < 1024 || unit === "PB") {
+      return unit === "B" ? `${Math.trunc(size)} ${unit}` : `${size.toFixed(1)} ${unit}`;
+    }
+    size /= 1024;
+  }
+}
+
 function el(id) {
   return document.getElementById(id);
 }
@@ -52,6 +68,35 @@ function fillSelect(select, options) {
     o.textContent = opt;
     select.appendChild(o);
   }
+}
+
+/** Per-tab file-size cache for the queue's Size column. Sizes arrive
+ * async from the backend (get_file_sizes) after paths are added; cells
+ * are patched in place rather than re-rendered so row selection state
+ * survives. Missing method on the API (older backend/mock) or a 0 size
+ * (unreadable/folder) just leaves the cell blank.
+ */
+function makeSizeTracker(tbody) {
+  const sizeByPath = new Map();
+
+  function label(path) {
+    const bytes = sizeByPath.get(path);
+    return bytes > 0 ? humanSize(bytes) : "";
+  }
+
+  async function refresh(paths) {
+    if (!window.pywebview.api.get_file_sizes) return;
+    const missing = paths.filter((p) => !sizeByPath.has(p));
+    if (missing.length === 0) return;
+    const sizes = await window.pywebview.api.get_file_sizes(missing);
+    for (const [p, bytes] of Object.entries(sizes)) sizeByPath.set(p, bytes);
+    for (const tr of tbody.querySelectorAll("tr")) {
+      const cell = tr.querySelector(".c-size");
+      if (cell) cell.textContent = label(tr.dataset.path);
+    }
+  }
+
+  return { label, refresh };
 }
 
 /** Generic multi-select list backed by a Set of paths, rendered into a
@@ -105,6 +150,7 @@ async function init() {
 function setupVideoTab() {
   const queue = new Queue();
   const tbody = document.querySelector("#video-table tbody");
+  const sizes = makeSizeTracker(tbody);
 
   const codecSelect = el("video-codec");
   const speedSelect = el("video-speed");
@@ -125,6 +171,17 @@ function setupVideoTab() {
     el("video-start").disabled = true;
   }
 
+  // Hardware acceleration: one simple toggle, only shown when this
+  // machine's ffmpeg lists a matching GPU encoder for the chosen codec
+  // (AV1 stays software, so the toggle hides there). Default on — a
+  // failed hw attempt falls back to software automatically backend-side.
+  const hwFor = CAPS.hw_available_for || {};
+  const hwLabel = el("video-hw-label");
+  function updateHwToggle() {
+    const codec = CAPS.video_codecs[codecSelect.value];
+    hwLabel.hidden = !hwFor[codec];
+  }
+
   function onCodecChanged() {
     const codec = CAPS.video_codecs[codecSelect.value];
     fillSelect(speedSelect, codec === "libsvtav1" ? SPEEDS_AV1 : SPEEDS_X26X);
@@ -132,7 +189,9 @@ function setupVideoTab() {
     crfInput.value = { libx264: 23, libx265: 26, libsvtav1: 30 }[codec];
     fillSelect(profileSelect, PROFILES_BY_CODEC[codec]);
     profileSelect.value = NO_PROFILE;
+    updateHwToggle();
   }
+  updateHwToggle();
   codecSelect.addEventListener("change", onCodecChanged);
 
   presetSelect.addEventListener("change", () => {
@@ -151,7 +210,7 @@ function setupVideoTab() {
     for (const path of queue.items) {
       const tr = document.createElement("tr");
       tr.dataset.path = path;
-      tr.innerHTML = `<td>${basename(path)}</td><td class="c-status">Queued</td><td class="c-progress"></td><td class="c-saved"></td>`;
+      tr.innerHTML = `<td>${basename(path)}</td><td class="c-size">${sizes.label(path)}</td><td class="c-status">Queued</td><td class="c-progress"></td><td class="c-saved"></td>`;
       tr.addEventListener("click", () => queue.toggleSelect(path, tr));
       tbody.appendChild(tr);
     }
@@ -160,10 +219,12 @@ function setupVideoTab() {
   el("video-add-files").addEventListener("click", async () => {
     queue.add(await window.pywebview.api.pick_video_files());
     render();
+    sizes.refresh(queue.items);
   });
   el("video-add-folder").addEventListener("click", async () => {
     queue.add(await window.pywebview.api.pick_video_folder());
     render();
+    sizes.refresh(queue.items);
   });
   el("video-remove").addEventListener("click", () => { queue.removeSelected(); render(); });
   el("video-clear").addEventListener("click", () => { queue.clear(); render(); });
@@ -171,7 +232,7 @@ function setupVideoTab() {
     const dir = await window.pywebview.api.pick_output_folder();
     if (dir) el("video-outdir").value = dir;
   });
-  dropAdders.video = (paths) => { queue.add(paths); render(); };
+  dropAdders.video = (paths) => { queue.add(paths); render(); sizes.refresh(queue.items); };
 
   const startBtn = el("video-start");
   const cancelBtn = el("video-cancel");
@@ -192,18 +253,31 @@ function setupVideoTab() {
       audio_mode: el("video-audio").value,
       container: el("video-container").value,
       deinterlace: el("video-deinterlace").checked,
+      use_hw: !el("video-hw-label").hidden && el("video-hw").checked,
       output_dir: el("video-outdir").value,
     };
     const res = await window.pywebview.api.start_video_job(queue.items, options);
     if (!res.ok) { alert(res.error); return; }
     startBtn.disabled = true;
     cancelBtn.disabled = false;
-    polling = setInterval(pollVideoStatus, 300);
+    polling = setInterval(pollVideoStatus, 450);
+    pollVideoStatus(); // immediate first status, no 450ms wait
   });
 
   cancelBtn.addEventListener("click", () => window.pywebview.api.cancel_video_job());
 
+  let pollBusy = false;
   async function pollVideoStatus() {
+    if (pollBusy) return;
+    pollBusy = true;
+    try {
+      await doPollVideoStatus();
+    } finally {
+      pollBusy = false;
+    }
+  }
+
+  async function doPollVideoStatus() {
     const s = await window.pywebview.api.get_video_status();
     for (const row of s.rows) {
       const tr = tbody.querySelector(`tr[data-path="${CSS.escape(row.key)}"]`);
@@ -211,7 +285,7 @@ function setupVideoTab() {
       tr.querySelector(".c-status").textContent = row.status;
       tr.querySelector(".c-progress").textContent = row.progress;
       tr.querySelector(".c-saved").textContent = row.saved;
-      tr.classList.toggle("row-done", row.status === "Done");
+      tr.classList.toggle("row-done", row.status.startsWith("Done"));
       tr.classList.toggle("row-failed", row.status === "Failed");
       tr.classList.toggle("row-cancelled", row.status === "Cancelled");
     }
@@ -233,6 +307,7 @@ function setupVideoTab() {
 function setupPhotoTab() {
   const queue = new Queue();
   const tbody = document.querySelector("#photo-table tbody");
+  const sizes = makeSizeTracker(tbody);
   fillSelect(el("photo-resize"), CAPS.max_dimension_choices);
 
   function render() {
@@ -240,7 +315,7 @@ function setupPhotoTab() {
     for (const path of queue.items) {
       const tr = document.createElement("tr");
       tr.dataset.path = path;
-      tr.innerHTML = `<td>${basename(path)}</td><td class="c-status">Queued</td><td class="c-saved"></td>`;
+      tr.innerHTML = `<td>${basename(path)}</td><td class="c-size">${sizes.label(path)}</td><td class="c-status">Queued</td><td class="c-saved"></td>`;
       tr.addEventListener("click", () => queue.toggleSelect(path, tr));
       tbody.appendChild(tr);
     }
@@ -249,10 +324,12 @@ function setupPhotoTab() {
   el("photo-add-files").addEventListener("click", async () => {
     queue.add(await window.pywebview.api.pick_photo_files());
     render();
+    sizes.refresh(queue.items);
   });
   el("photo-add-folder").addEventListener("click", async () => {
     queue.add(await window.pywebview.api.pick_photo_folder());
     render();
+    sizes.refresh(queue.items);
   });
   el("photo-remove").addEventListener("click", () => { queue.removeSelected(); render(); });
   el("photo-clear").addEventListener("click", () => { queue.clear(); render(); });
@@ -260,7 +337,7 @@ function setupPhotoTab() {
     const dir = await window.pywebview.api.pick_output_folder();
     if (dir) el("photo-outdir").value = dir;
   });
-  dropAdders.photos = (paths) => { queue.add(paths); render(); };
+  dropAdders.photos = (paths) => { queue.add(paths); render(); sizes.refresh(queue.items); };
 
   const startBtn = el("photo-start");
   const cancelBtn = el("photo-cancel");
@@ -283,12 +360,24 @@ function setupPhotoTab() {
     if (!res.ok) { alert(res.error); return; }
     startBtn.disabled = true;
     cancelBtn.disabled = false;
-    polling = setInterval(pollPhotoStatus, 300);
+    polling = setInterval(pollPhotoStatus, 450);
+    pollPhotoStatus();
   });
 
   cancelBtn.addEventListener("click", () => window.pywebview.api.cancel_photo_job());
 
+  let pollBusy = false;
   async function pollPhotoStatus() {
+    if (pollBusy) return;
+    pollBusy = true;
+    try {
+      await doPollPhotoStatus();
+    } finally {
+      pollBusy = false;
+    }
+  }
+
+  async function doPollPhotoStatus() {
     const s = await window.pywebview.api.get_photo_status();
     for (const row of s.rows) {
       const tr = tbody.querySelector(`tr[data-path="${CSS.escape(row.key)}"]`);
@@ -383,7 +472,8 @@ function setupArchiveTab() {
     if (!res.ok) { alert(res.error); return; }
     startBtn.disabled = true;
     cancelBtn.disabled = false;
-    polling = setInterval(pollArchiveStatus, 300);
+    polling = setInterval(pollArchiveStatus, 450);
+    pollArchiveStatus();
   });
 
   cancelBtn.addEventListener("click", () => {
@@ -391,7 +481,18 @@ function setupArchiveTab() {
     api();
   });
 
+  let pollBusy = false;
   async function pollArchiveStatus() {
+    if (pollBusy) return;
+    pollBusy = true;
+    try {
+      await doPollArchiveStatus();
+    } finally {
+      pollBusy = false;
+    }
+  }
+
+  async function doPollArchiveStatus() {
     const api = mode === "bundle" ? window.pywebview.api.get_archive_bundle_status : window.pywebview.api.get_archive_gzip_status;
     const s = await api();
     // gzip mode's Runner also tracks a per-file `rows` breakdown, but the

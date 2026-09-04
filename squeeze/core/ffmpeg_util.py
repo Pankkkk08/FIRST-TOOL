@@ -23,6 +23,25 @@ SUBPROCESS_CREATION_FLAGS = (
     getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 )
 
+
+def _nice_preexec() -> None:
+    os.nice(10)
+
+
+# Long ffmpeg encodes saturate every CPU core; at normal priority that
+# starves the UI thread of CPU time and Windows flags the window
+# "(Not responding)". HandBrake's fix, mirrored here: run the encoder at
+# below-normal priority — identical speed on an otherwise-idle machine,
+# but the UI (and the rest of the system) always gets scheduled first.
+# Windows: an extra creationflag. POSIX: os.nice via preexec_fn — safe
+# despite the general preexec_fn-with-threads caveat because the hook
+# makes exactly one async-signal-safe syscall. Short-lived, latency-
+# sensitive calls (ffprobe) deliberately stay at normal priority.
+ENCODE_CREATION_FLAGS = SUBPROCESS_CREATION_FLAGS | (
+    getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0) if os.name == "nt" else 0
+)
+ENCODE_PREEXEC_FN = None if os.name == "nt" else _nice_preexec
+
 VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp",
 }
