@@ -32,7 +32,7 @@ def main() -> None:
         width=WINDOW_W,
         height=WINDOW_H,
         min_size=(860, 620),
-        background_color="#0d0f1a",
+        background_color="#0e1014",  # matches --bg-base in static/style.css
     )
     api.window = window
 

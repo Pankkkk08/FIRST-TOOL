@@ -1,16 +1,19 @@
 :root {
-  --bg-base: #0d0f1a;
-  --accent: #8b7cf6;
-  --accent-hover: #a599f8;
-  --accent-press: #7566e0;
-  --success: #2dd4bf;
+  /* Palette matched to the app logo: charcoal tile, amber folder,
+     silver clamp. Amber is the single accent; steel blue only appears
+     as a faint aurora glow (the "silver" note), never on controls. */
+  --bg-base: #0e1014;
+  --accent: #ffb020;
+  --accent-hover: #ffc14d;
+  --accent-press: #ec9f0e;
+  --success: #3ecf8e;
   --danger: #f87171;
   --danger-hover: #fb9a9a;
-  --text-primary: #f4f4f8;
-  --text-muted: #a6a6c2;
-  --text-faint: #7a7a97;
-  --surface: #1c1e30;
-  --surface-light: #262842;
+  --text-primary: #f4f3ef;
+  --text-muted: #a8a7a0;
+  --text-faint: #7c7b75;
+  --surface: #1a1c21;
+  --surface-light: #262931;
   --panel-tint: rgba(255, 255, 255, 0.08);
   --panel-border: rgba(255, 255, 255, 0.16);
   --radius: 18px;
@@ -31,9 +34,9 @@ body {
      hand with Pillow — here it's just CSS, and the panels below get
      REAL live backdrop-filter blur instead of a pre-rendered image. */
   background:
-    radial-gradient(circle at 12% 10%, #7c6cf6 0%, transparent 55%),
-    radial-gradient(circle at 85% 15%, #2dd4bf 0%, transparent 50%),
-    radial-gradient(circle at 50% 100%, #ec6ff0 0%, transparent 60%),
+    radial-gradient(circle at 12% 10%, #c77e14 0%, transparent 55%),
+    radial-gradient(circle at 85% 15%, #46628a 0%, transparent 50%),
+    radial-gradient(circle at 50% 100%, #3d5273 0%, transparent 60%),
     var(--bg-base);
   display: flex;
   flex-direction: column;
@@ -99,7 +102,7 @@ body {
 
 .tab-pill:hover { background: rgba(255, 255, 255, 0.18); }
 .tab-pill:active { transform: scale(0.97); }
-.tab-pill.active { background: var(--accent); color: #151221; }
+.tab-pill.active { background: var(--accent); color: #201403; }
 .tab-pill.active:hover { background: var(--accent-hover); }
 
 /* ---------------- layout ---------------- */
@@ -147,7 +150,7 @@ main {
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
 
-.btn-primary { background: var(--accent); color: #151221; }
+.btn-primary { background: var(--accent); color: #201403; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 
 .btn-ghost { background: rgba(255, 255, 255, 0.1); color: var(--text-primary); }
@@ -283,7 +286,7 @@ tbody tr.row-failed td.c-status,
 tbody tr.row-cancelled td.c-status { color: var(--danger); }
 td.c-size { color: var(--text-muted); white-space: nowrap; }
 
-tbody tr.selected { background: rgba(139, 124, 246, 0.25); }
+tbody tr.selected { background: rgba(255, 176, 32, 0.22); }
 
 .plain-list {
   list-style: none;
@@ -300,7 +303,7 @@ tbody tr.selected { background: rgba(139, 124, 246, 0.25); }
   cursor: pointer;
 }
 .plain-list li:first-child { border-top: none; }
-.plain-list li.selected { background: rgba(139, 124, 246, 0.25); }
+.plain-list li.selected { background: rgba(255, 176, 32, 0.22); }
 
 .empty-hint {
   text-align: center;
@@ -339,7 +342,7 @@ input[type="range"] {
   transition: background 0.15s ease;
 }
 .pill-btn:hover { background: rgba(255, 255, 255, 0.18); }
-.pill-btn.active { background: var(--accent); color: #151221; }
+.pill-btn.active { background: var(--accent); color: #201403; }
 
 /* ---------------- scrollbars ---------------- */
 
@@ -356,7 +359,7 @@ input[type="range"] {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(13, 15, 26, 0.55);
+  background: rgba(14, 16, 20, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   z-index: 100;
