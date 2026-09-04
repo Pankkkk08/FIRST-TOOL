@@ -24,6 +24,18 @@ import sys
 repo_root = os.path.abspath(os.path.join(SPECPATH, os.pardir))
 static_dir = os.path.join(repo_root, "squeeze", "webui", "static")
 
+# App icon (regenerate with scripts/make_icons.py when the logo changes):
+# .ico is embedded into the Windows exe (window/taskbar/Explorer icon),
+# .icns into the macOS bundle. Linux has no exe-embedded icon concept —
+# there the GTK window icon is set at runtime from the bundled
+# static/icon.png instead (see squeeze/webapp.py).
+if sys.platform == "win32":
+    app_icon = os.path.join(SPECPATH, "icon.ico")
+elif sys.platform == "darwin":
+    app_icon = os.path.join(SPECPATH, "icon.icns")
+else:
+    app_icon = None
+
 a = Analysis(
     [os.path.join(repo_root, "run_squeeze.py")],
     pathex=[repo_root],
@@ -57,12 +69,13 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=app_icon,
 )
 
 if sys.platform == "darwin":
     app = BUNDLE(
         exe,
         name="Squeeze.app",
-        icon=None,
+        icon=app_icon,
         bundle_identifier="local.tools.squeeze",
     )

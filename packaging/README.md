@@ -54,6 +54,16 @@ on macOS) — a single file (or `.app` bundle), copy it anywhere and run
 it. `build/` and `dist/` are scratch output, already in `.gitignore`;
 delete them freely and rebuild any time.
 
+### App icon
+
+The logo lives in `packaging/` in every format the builds need:
+`icon-source.png` (the original render), `icon.ico` (embedded into the
+Windows exe and used by the installer), `icon.icns` (macOS bundle), and
+`icon.png` (512px master; a copy ships in `squeeze/webui/static/` for
+the Linux/GTK window icon and the in-app header). If the logo changes,
+replace `icon-source.png`, run `python scripts/make_icons.py`, and copy
+the new `icon.png` over `squeeze/webui/static/icon.png`.
+
 ### Windows: a real installer on top of the .exe
 
 `windows-installer.iss` wraps the built `dist\Squeeze.exe` in a normal

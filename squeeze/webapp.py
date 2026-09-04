@@ -45,7 +45,10 @@ def main() -> None:
         window.dom.get_element("body").events.drop += api._on_drop
 
     window.events.loaded += register_drop_handler
-    webview.start()
+    # icon= sets the window/taskbar icon on GTK (Linux); Windows/macOS
+    # ignore it — there the icon is embedded into the exe/.app bundle at
+    # build time instead (see packaging/squeeze.spec).
+    webview.start(icon=os.path.join(_STATIC_DIR, "icon.png"))
 
 
 if __name__ == "__main__":

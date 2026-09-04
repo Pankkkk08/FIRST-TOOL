@@ -33,6 +33,7 @@ OutputBaseFilename=Squeeze-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]
